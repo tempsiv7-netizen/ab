@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>DATA HEIST — Murder Mystery Investigation</title>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Share+Tech+Mono&family=IBM+Plex+Mono:wght@400;500&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<style>
+/* ── DESIGN TOKENS ── */
+:root{
+  --bg:#0b0b10;--bg2:#111118;--bg3:#18181f;--bg4:#1f1f28;
+  --panel:#13131a;--border:#252530;--border2:#35354a;
+  --red:#e05555;--red-d:#6b1f1f;
+  --gold:#d4a844;--gold-d:#7a5c10;
+  --green:#4ec97a;--green-d:#163324;
+  --cyan:#5bc8d4;--cyan-d:#0f3a40;
+  --purple:#9b7edb;
+  --muted:#555570;--text:#c0c0dc;--text2:#8888a8;--white:#eaeaf8;
+  --mono:'IBM Plex Mono',monospace;
+  --story:'Crimson Pro',Georgia,serif;
+  --title:'Special Elite',monospace;
+  --ui:'Share Tech Mono',monospace;
+  --radius:4px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);}
+body{font-family:var(--mono);color:var(--text);display:flex;flex-direction:column;}
+
+/* ── TOPBAR ── */
+.topbar{height:46px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 1.25rem;gap:1.25rem;flex-shrink:0;z-index:50;}
+.logo{font-family:var(--title);font-size:1.05rem;color:var(--gold);letter-spacing:.1em;cursor:pointer;}
+.logo span{color:var(--red);}
+.case-tag{font-family:var(--ui);font-size:.58rem;color:var(--muted);letter-spacing:.18em;border-left:1px solid var(--border);padding-left:1.25rem;}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:.75rem;}
+.score-chip{font-family:var(--ui);font-size:.65rem;padding:3px 10px;border:1px solid var(--gold-d);color:var(--gold);border-radius:var(--radius);}
+.py-status{font-family:var(--ui);font-size:.6rem;color:var(--muted);display:flex;align-items:center;gap:5px;}
+.sdot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s;}
+.sdot.loading{background:var(--gold);animation:blink 1s infinite;}
+.sdot.ready{background:var(--green);}
+.sdot.err{background:var(--red);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.tour-btn{font-family:var(--ui);font-size:.6rem;letter-spacing:.12em;padding:4px 10px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;border-radius:var(--radius);transition:all .15s;}
+.tour-btn:hover{border-color:var(--gold-d);color:var(--gold);}
+
+/* ── CHAPTER TABS ── */
+.ch-tabs{height:34px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
+.ch-tabs::-webkit-scrollbar{display:none;}
+.ch-tab{font-family:var(--ui);font-size:.58rem;letter-spacing:.1em;padding:0 12px;height:100%;display:flex;align-items:center;gap:5px;cursor:pointer;border-right:1px solid var(--border);color:var(--muted);white-space:nowrap;transition:all .15s;flex-shrink:0;position:relative;}
+.ch-tab:hover{color:var(--text);background:var(--bg3);}
+.ch-tab.active{color:var(--white);background:var(--bg3);}
+.ch-tab.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--gold);}
+.ch-tab.solved{color:var(--green);}
+.ch-tab.solved.active::after{background:var(--green);}
+.ch-tab.locked{opacity:.3;cursor:not-allowed;}
+.tdot{width:5px;height:5px;border-radius:50%;background:var(--border2);flex-shrink:0;}
+.tdot.solved{background:var(--green);}
+.tdot.active{background:var(--gold);}
+
+/* ── MAIN RESIZABLE LAYOUT ── */
+.workspace{flex:1;display:flex;overflow:hidden;min-height:0;}
+
+/* PANELS */
+.panel-story{display:flex;flex-direction:column;overflow:hidden;background:var(--panel);min-width:180px;max-width:50%;width:290px;flex-shrink:0;}
+.panel-editor{display:flex;flex-direction:column;overflow:hidden;background:var(--bg);flex:1;min-width:200px;}
+.panel-right{display:flex;flex-direction:column;overflow:hidden;background:var(--panel);min-width:200px;max-width:50%;width:310px;flex-shrink:0;}
+
+/* DRAG HANDLES */
+.vdrag{width:5px;background:var(--border);cursor:col-resize;flex-shrink:0;transition:background .15s;position:relative;z-index:10;}
+.vdrag:hover,.vdrag.dragging{background:var(--gold-d);}
+.vdrag::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:1px;height:40px;background:var(--border2);border-radius:1px;}
+.hdrag{height:5px;background:var(--border);cursor:row-resize;flex-shrink:0;transition:background .15s;}
+.hdrag:hover,.hdrag.dragging{background:var(--gold-d);}
+
+/* PANEL HEADERS */
+.ph{padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--ui);font-size:.58rem;letter-spacing:.18em;color:var(--muted);display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.ph-icon{width:13px;height:13px;border:1px solid var(--muted);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;}
+
+/* ── STORY PANEL ── */
+.story-scroll{flex:1;overflow-y:auto;padding:1.1rem;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.story-scroll::-webkit-scrollbar{width:3px;}
+.story-scroll::-webkit-scrollbar-thumb{background:var(--border);}
+.ch-num{font-family:var(--ui);font-size:.52rem;letter-spacing:.2em;color:var(--muted);margin-bottom:.35rem;}
+.ch-ttl{font-family:var(--title);font-size:1.1rem;color:var(--white);margin-bottom:.9rem;line-height:1.25;}
+.s-nar{font-family:var(--story);font-size:.95rem;line-height:1.8;color:#9898b8;font-style:italic;margin-bottom:1rem;}
+.dbox{border-left:2px solid var(--gold-d);background:rgba(212,168,68,.05);padding:.65rem .9rem;margin-bottom:.85rem;}
+.dlbl{font-family:var(--ui);font-size:.52rem;letter-spacing:.18em;color:var(--gold);margin-bottom:.3rem;}
+.dtxt{font-family:var(--story);font-size:.88rem;color:var(--text2);line-height:1.6;}
+.mbox{background:rgba(91,200,212,.07);border:1px solid var(--cyan-d);border-left:3px solid var(--cyan);padding:.65rem .9rem;margin-bottom:.85rem;}
+.mlbl{font-family:var(--ui);font-size:.52rem;letter-spacing:.18em;color:var(--cyan);margin-bottom:.3rem;}
+.mtxt{font-family:var(--story);font-size:.9rem;color:var(--text);line-height:1.65;}
+.mtxt code{font-family:var(--mono);font-size:.78rem;color:var(--gold);background:rgba(212,168,68,.1);padding:1px 4px;border-radius:2px;}
+.mtxt b{color:var(--white);font-weight:600;}
+.cluebox{background:rgba(224,85,85,.1);border:1px solid var(--red-d);border-left:3px solid var(--red);padding:.65rem .9rem;margin-top:.65rem;display:none;}
+.cluebox.show{display:block;animation:fadeIn .4s ease;}
+.cluelbl{font-family:var(--ui);font-size:.52rem;letter-spacing:.18em;color:var(--red);margin-bottom:.3rem;}
+.cluetxt{font-family:var(--story);font-size:.86rem;color:#e09090;line-height:1.6;}
+.solvedbox{border-left:2px solid var(--green);background:rgba(78,201,122,.05);padding:.65rem .9rem;margin-top:.65rem;}
+.solvedlbl{font-family:var(--ui);font-size:.52rem;letter-spacing:.18em;color:var(--green);margin-bottom:.3rem;}
+.solvedtxt{font-family:var(--story);font-size:.88rem;color:#80c090;line-height:1.6;}
+.evrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:.65rem;}
+.evtag{font-family:var(--ui);font-size:.52rem;padding:2px 7px;border:1px solid var(--border2);border-left:2px solid var(--red-d);color:var(--text2);background:var(--bg3);border-radius:1px;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
+/* SUSPECT BOARD */
+.sus-panel{border-top:1px solid var(--border);padding:.65rem .9rem;flex-shrink:0;}
+.sus-ttl{font-family:var(--ui);font-size:.52rem;letter-spacing:.18em;color:var(--muted);margin-bottom:.4rem;}
+.sus-item{display:flex;align-items:center;gap:5px;padding:2px 0;font-family:var(--ui);font-size:.58rem;}
+.sus-dot{width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0;transition:all .3s;}
+.sus-dot.prime{background:var(--red);box-shadow:0 0 5px var(--red);}
+.sus-dot.cleared{background:var(--green);}
+.sus-id{color:var(--muted);min-width:42px;}
+.sus-name{color:var(--text2);}
+
+/* ── EDITOR PANEL ── */
+.ed-toolbar{height:38px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:.6rem;flex-shrink:0;}
+.ed-fname{font-family:var(--ui);font-size:.58rem;letter-spacing:.12em;color:var(--muted);flex:1;}
+.run-btn{font-family:var(--ui);font-size:.62rem;letter-spacing:.12em;padding:4px 14px;background:var(--green-d);border:1px solid var(--green);color:var(--green);cursor:pointer;border-radius:var(--radius);transition:all .15s;white-space:nowrap;}
+.run-btn:hover{background:rgba(78,201,122,.2);}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;}
+.clr-btn{font-family:var(--ui);font-size:.58rem;padding:4px 9px;background:transparent;border:1px solid var(--border2);color:var(--muted);cursor:pointer;border-radius:var(--radius);transition:all .15s;}
+.clr-btn:hover{border-color:var(--red-d);color:var(--red);}
+.ed-wrap{flex:1;overflow:hidden;min-height:0;}
+.ed-wrap .CodeMirror{height:100%;font-family:var(--mono)!important;font-size:13px!important;line-height:1.7!important;background:#1a1a2e!important;}
+.ed-wrap .CodeMirror-gutters{background:#141424!important;border-right:1px solid var(--border)!important;}
+
+/* OUTPUT */
+.out-panel{background:#080810;border-top:1px solid var(--border);display:flex;flex-direction:column;height:200px;min-height:80px;flex-shrink:0;}
+.out-hdr{padding:5px 12px;border-bottom:1px solid var(--border);font-family:var(--ui);font-size:.55rem;letter-spacing:.18em;color:var(--muted);display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.out-clr{margin-left:auto;font-family:var(--ui);font-size:.52rem;background:none;border:1px solid var(--border);color:var(--muted);padding:2px 7px;cursor:pointer;border-radius:var(--radius);}
+.out-clr:hover{color:var(--text2);border-color:var(--border2);}
+.out-scroll{flex:1;overflow-y:auto;padding:.6rem .9rem;font-family:var(--mono);font-size:12px;line-height:1.65;color:#88e0a8;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.out-scroll::-webkit-scrollbar{width:3px;}
+.out-scroll::-webkit-scrollbar-thumb{background:var(--border);}
+.out-scroll pre{white-space:pre-wrap;word-break:break-all;margin:0;}
+.oe{color:#f08080;}.os{color:var(--muted);font-style:italic;}.ok{color:var(--green);}
+.pip-note{color:var(--gold);font-style:italic;}
+
+/* ── RIGHT PANEL ── */
+/* Answer */
+.ans-sec{padding:.9rem;border-bottom:1px solid var(--border);flex-shrink:0;}
+.ans-lbl{font-family:var(--ui);font-size:.55rem;letter-spacing:.18em;color:var(--muted);margin-bottom:.5rem;}
+.ans-inp{width:100%;font-family:var(--mono);font-size:.88rem;padding:7px 10px;background:var(--bg3);border:1px solid var(--border2);color:var(--white);outline:none;border-radius:var(--radius);margin-bottom:.5rem;transition:border-color .2s;}
+.ans-inp:focus{border-color:var(--gold);}
+.ans-inp.ok{border-color:var(--green);background:rgba(78,201,122,.07);}
+.ans-inp.bad{border-color:var(--red);background:rgba(224,85,85,.07);}
+.ans-row{display:flex;gap:.4rem;}
+.btn-sub{flex:1;font-family:var(--ui);font-size:.6rem;letter-spacing:.12em;padding:6px 0;background:var(--bg3);border:1px solid var(--gold-d);color:var(--gold);cursor:pointer;border-radius:var(--radius);transition:all .15s;}
+.btn-sub:hover{background:rgba(212,168,68,.1);}
+.btn-hint{font-family:var(--ui);font-size:.58rem;padding:6px 10px;background:transparent;border:1px solid var(--border2);color:var(--muted);cursor:pointer;border-radius:var(--radius);transition:all .15s;}
+.btn-hint:hover{border-color:var(--cyan-d);color:var(--cyan);}
+.ans-fb{margin-top:.5rem;font-family:var(--mono);font-size:.72rem;padding:5px 9px;border-radius:var(--radius);display:none;line-height:1.5;}
+.ans-fb.show{display:block;}
+.ans-fb.ok{background:rgba(78,201,122,.1);color:var(--green);border:1px solid rgba(78,201,122,.25);}
+.ans-fb.bad{background:rgba(224,85,85,.1);color:var(--red);border:1px solid rgba(224,85,85,.25);}
+.ans-fb.hint{background:rgba(212,168,68,.1);color:var(--gold);border:1px solid rgba(212,168,68,.25);}
+
+/* Progress */
+.prog-sec{flex:1;overflow-y:auto;padding:.9rem;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.prog-ttl{font-family:var(--ui);font-size:.55rem;letter-spacing:.18em;color:var(--muted);margin-bottom:.6rem;}
+.prog-bar-o{height:3px;background:var(--bg3);border-radius:2px;margin-bottom:.35rem;overflow:hidden;}
+.prog-bar-i{height:100%;background:var(--gold);border-radius:2px;transition:width .6s ease;width:0%;}
+.prog-sc{font-family:var(--ui);font-size:.68rem;color:var(--text2);margin-bottom:.9rem;}
+.prog-sc strong{color:var(--white);font-size:.85rem;}
+.cli{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:var(--radius);cursor:pointer;margin-bottom:2px;transition:background .15s;border-left:2px solid transparent;}
+.cli:hover{background:var(--bg3);}
+.cli.active{background:var(--bg3);border-left-color:var(--gold);}
+.cli.solved{border-left-color:var(--green);}
+.cli.locked{opacity:.38;cursor:not-allowed;}
+.cli-n{font-family:var(--ui);font-size:.58rem;color:var(--muted);min-width:20px;}
+.cli-t{font-family:var(--mono);font-size:.67rem;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cli.active .cli-t{color:var(--white);}
+.cli.solved .cli-t{color:var(--green);}
+.cli-b{font-family:var(--ui);font-size:.48rem;padding:1px 5px;border-radius:2px;flex-shrink:0;}
+.cli-b.easy{background:rgba(78,201,122,.15);color:var(--green);}
+.cli-b.medium{background:rgba(212,168,68,.15);color:var(--gold);}
+.cli-b.hard{background:rgba(224,85,85,.15);color:var(--red);}
+.cli-b.done{background:rgba(78,201,122,.2);color:var(--green);}
+
+/* Dataset Explorer */
+.ds-sec{border-top:1px solid var(--border);flex-shrink:0;}
+.ds-hdr{padding:6px 10px;cursor:pointer;font-family:var(--ui);font-size:.55rem;letter-spacing:.18em;color:var(--muted);display:flex;align-items:center;gap:6px;user-select:none;transition:background .15s;}
+.ds-hdr:hover{background:var(--bg3);}
+.ds-arrow{transition:transform .2s;font-size:8px;}
+.ds-arrow.open{transform:rotate(90deg);}
+.ds-body{display:none;max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.ds-body.open{display:block;}
+.ds-card{border-top:1px solid var(--border);padding:.7rem .9rem;}
+.ds-card-hdr{display:flex;align-items:center;gap:6px;margin-bottom:.45rem;cursor:pointer;}
+.ds-var-badge{font-family:var(--mono);font-size:.7rem;color:var(--cyan);background:rgba(91,200,212,.1);padding:1px 7px;border-radius:2px;}
+.ds-file{font-family:var(--ui);font-size:.52rem;color:var(--muted);}
+.ds-rows{font-family:var(--ui);font-size:.5rem;color:var(--muted);margin-left:auto;}
+.ds-cols{display:none;}
+.ds-cols.open{display:block;}
+.ds-col-row{display:grid;grid-template-columns:120px 55px 1fr;gap:4px;padding:2px 0;border-top:1px solid var(--border);font-family:var(--mono);font-size:.6rem;}
+.dc-name{color:var(--cyan);}
+.dc-type{color:var(--purple);}
+.dc-desc{color:var(--text2);}
+.ds-sample-btn{font-family:var(--ui);font-size:.52rem;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;border-radius:var(--radius);margin-top:.4rem;transition:all .15s;}
+.ds-sample-btn:hover{border-color:var(--cyan-d);color:var(--cyan);}
+.ds-sample{display:none;margin-top:.4rem;background:var(--bg3);border:1px solid var(--border);padding:.4rem;border-radius:var(--radius);font-family:var(--mono);font-size:.58rem;color:var(--text2);overflow-x:auto;white-space:pre;line-height:1.5;}
+.ds-sample.show{display:block;}
+
+/* ── PIP PANEL ── */
+.pip-sec{border-top:1px solid var(--border);padding:.7rem .9rem;flex-shrink:0;}
+.pip-ttl{font-family:var(--ui);font-size:.55rem;letter-spacing:.18em;color:var(--muted);margin-bottom:.45rem;}
+.pip-row{display:flex;gap:.4rem;}
+.pip-inp{flex:1;font-family:var(--mono);font-size:.78rem;padding:5px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--white);outline:none;border-radius:var(--radius);transition:border-color .2s;}
+.pip-inp:focus{border-color:var(--cyan);}
+.pip-btn{font-family:var(--ui);font-size:.58rem;padding:5px 10px;background:transparent;border:1px solid var(--cyan-d);color:var(--cyan);cursor:pointer;border-radius:var(--radius);transition:all .15s;white-space:nowrap;}
+.pip-btn:hover{background:rgba(91,200,212,.1);}
+.pip-sub{font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-top:.3rem;}
+.pip-sub code{color:var(--gold);}
+
+/* ── LOADING SCREEN ── */
+.ls{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1000;gap:1.5rem;}
+.ls-logo{font-family:var(--title);font-size:3rem;color:var(--gold);letter-spacing:.15em;text-align:center;}
+.ls-logo span{color:var(--red);}
+.ls-sub{font-family:var(--ui);font-size:.68rem;letter-spacing:.25em;color:var(--muted);}
+.ls-bar-o{width:280px;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;}
+.ls-bar-i{height:100%;background:var(--gold);border-radius:2px;width:0%;transition:width .4s ease;}
+.ls-msg{font-family:var(--mono);font-size:.68rem;color:var(--muted);min-height:1.1em;text-align:center;}
+
+/* ── TOUR OVERLAY ── */
+.tour-bg{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:900;display:none;align-items:center;justify-content:center;}
+.tour-bg.show{display:flex;}
+.tour-card{background:var(--bg2);border:1px solid var(--border2);border-top:3px solid var(--gold);max-width:560px;width:92%;padding:0;border-radius:var(--radius);overflow:hidden;}
+.tour-progress-bar{height:3px;background:var(--border);position:relative;}
+.tour-progress-fill{height:100%;background:var(--gold);transition:width .35s ease;}
+.tour-body{padding:2rem 2rem 1.5rem;}
+.tour-step-lbl{font-family:var(--ui);font-size:.55rem;letter-spacing:.22em;color:var(--muted);margin-bottom:.5rem;}
+.tour-title{font-family:var(--title);font-size:1.5rem;color:var(--gold);margin-bottom:1rem;}
+.tour-content{font-family:var(--story);font-size:1rem;color:var(--text2);line-height:1.75;margin-bottom:1.25rem;}
+.tour-content code{font-family:var(--mono);font-size:.82rem;color:var(--cyan);background:rgba(91,200,212,.1);padding:1px 5px;border-radius:2px;}
+.tour-content b{color:var(--white);}
+.tour-content .tour-ds-row{display:flex;align-items:center;gap:.75rem;padding:.4rem 0;border-bottom:1px solid var(--border);}
+.tour-content .tour-ds-row:last-child{border-bottom:none;}
+.tour-content .tour-var{font-family:var(--mono);font-size:.82rem;color:var(--cyan);min-width:60px;}
+.tour-content .tour-file{font-family:var(--ui);font-size:.62rem;color:var(--muted);}
+.tour-content .tour-cols{font-family:var(--mono);font-size:.68rem;color:var(--text2);}
+.tour-content ul{padding-left:1.2rem;margin-top:.5rem;}
+.tour-content li{margin-bottom:.4rem;}
+.tour-actions{display:flex;align-items:center;padding:.9rem 2rem;border-top:1px solid var(--border);gap:.75rem;}
+.tour-dots{display:flex;gap:5px;flex:1;}
+.tour-dot{width:7px;height:7px;border-radius:50%;background:var(--border2);cursor:pointer;transition:all .2s;}
+.tour-dot.active{background:var(--gold);}
+.tour-dot.done{background:var(--green);}
+.btn-tour-prev{font-family:var(--ui);font-size:.6rem;padding:6px 14px;background:transparent;border:1px solid var(--border2);color:var(--muted);cursor:pointer;border-radius:var(--radius);transition:all .15s;}
+.btn-tour-prev:hover{border-color:var(--border2);color:var(--text);}
+.btn-tour-next{font-family:var(--ui);font-size:.6rem;letter-spacing:.12em;padding:6px 18px;background:var(--gold-d);border:1px solid var(--gold);color:var(--gold);cursor:pointer;border-radius:var(--radius);transition:all .15s;}
+.btn-tour-next:hover{background:rgba(212,168,68,.2);}
+.btn-tour-skip{font-family:var(--ui);font-size:.58rem;background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;}
+.btn-tour-skip:hover{color:var(--text2);}
+
+/* ── VERDICT ── */
+.verdict-bg{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:800;}
+.verdict-bg.show{display:flex;}
+.verdict-card{background:var(--bg2);border:1px solid var(--gold-d);border-top:3px solid var(--gold);padding:2.5rem;max-width:560px;width:92%;text-align:center;border-radius:var(--radius);position:relative;}
+.verdict-close{position:absolute;top:.75rem;right:.75rem;background:none;border:1px solid var(--border2);color:var(--muted);font-family:var(--ui);font-size:.55rem;padding:2px 7px;cursor:pointer;border-radius:var(--radius);}
+.vttl{font-family:var(--title);font-size:2rem;color:var(--gold);margin-bottom:.35rem;}
+.vcase{font-family:var(--ui);font-size:.58rem;letter-spacing:.18em;color:var(--muted);margin-bottom:1.25rem;}
+.vname{font-family:var(--mono);font-size:1.05rem;color:var(--red);padding:.65rem;border:1px solid var(--red-d);background:rgba(224,85,85,.07);margin-bottom:1.25rem;border-radius:var(--radius);}
+.vbody{font-family:var(--story);font-size:.98rem;color:var(--text2);line-height:1.75;font-style:italic;margin-bottom:1.25rem;}
+.vscore{font-family:var(--ui);font-size:.68rem;letter-spacing:.15em;color:var(--gold);}
+
+/* Pulse animation on newly unlocked tabs */
+@keyframes unlockPulse{0%{box-shadow:0 0 0 0 rgba(212,168,68,.5)}70%{box-shadow:0 0 0 6px rgba(212,168,68,0)}100%{box-shadow:0 0 0 0 rgba(212,168,68,0)}}
+.ch-tab.just-unlocked{animation:unlockPulse .8s ease;}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="ls" id="ls">
+  <div class="ls-logo">DATA <span>HEIST</span></div>
+  <div class="ls-sub">MURDER MYSTERY · INVESTIGATION PLATFORM</div>
+  <div class="ls-bar-o"><div class="ls-bar-i" id="ls-bar"></div></div>
+  <div class="ls-msg" id="ls-msg">Initializing Python runtime...</div>
+</div>
+
+<!-- TOUR -->
+<div class="tour-bg" id="tour-bg">
+  <div class="tour-card">
+    <div class="tour-progress-bar"><div class="tour-progress-fill" id="tour-fill"></div></div>
+    <div class="tour-body">
+      <div class="tour-step-lbl" id="tour-step-lbl">STEP 1 OF 6</div>
+      <div class="tour-title" id="tour-title"></div>
+      <div class="tour-content" id="tour-content"></div>
+    </div>
+    <div class="tour-actions">
+      <button class="btn-tour-skip" onclick="closeTour()">SKIP TOUR</button>
+      <div class="tour-dots" id="tour-dots"></div>
+      <button class="btn-tour-prev" id="btn-prev" onclick="tourNav(-1)">BACK</button>
+      <button class="btn-tour-next" id="btn-next" onclick="tourNav(1)">NEXT →</button>
+    </div>
+  </div>
+</div>
+
+<!-- VERDICT -->
+<div class="verdict-bg" id="verdict-bg">
+  <div class="verdict-card">
+    <button class="verdict-close" onclick="document.getElementById('verdict-bg').classList.remove('show')">CLOSE</button>
+    <div class="vttl">Case Closed</div>
+    <div class="vcase">CASE #2024-NXD-007 · BENGALURU · MARCH 15, 2024</div>
+    <div class="vname">ROHAN MEHTA &nbsp;·&nbsp; EMP007 &nbsp;·&nbsp; DATA ENGINEER</div>
+    <div class="vbody">He sold his company's secrets for ₹12,25,000. When Dr. Arjun Nair discovered the betrayal and scheduled his termination, Rohan chose murder over accountability. He logged in remotely at 1:55 AM, deleted every backup, and executed a payload that destroyed both the servers — and the man who built them.<br><br>The data never lied. It simply waited for someone patient enough to ask the right questions.</div>
+    <div class="vscore">FINAL SCORE: <strong id="v-score">0</strong> / 99 POINTS</div>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo" onclick="openTour()">DATA <span>HEIST</span></div>
+  <div class="case-tag">CASE #2024-NXD-007 · VICTIM: DR. ARJUN NAIR · STATUS: OPEN</div>
+  <div class="topbar-right">
+    <div class="py-status"><div class="sdot loading" id="py-dot"></div><span id="py-txt">LOADING</span></div>
+    <div class="score-chip">SCORE: <strong id="score-top">0</strong>/99</div>
+    <button class="tour-btn" onclick="openTour()">? TOUR</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="ch-tabs" id="ch-tabs"></div>
+
+<!-- WORKSPACE -->
+<div class="workspace" id="workspace">
+
+  <!-- LEFT: STORY -->
+  <div class="panel-story" id="panel-story">
+    <div class="ph"><span class="ph-icon">⚑</span>CASE FILE</div>
+    <div class="story-scroll" id="story-scroll"></div>
+    <div class="sus-panel">
+      <div class="sus-ttl">SUSPECT BOARD</div>
+      <div id="sus-board">
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP001"></div><span class="sus-id">EMP001</span><span class="sus-name">Priya Sharma</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP002"></div><span class="sus-id">EMP002</span><span class="sus-name">Kavya Reddy</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP003"></div><span class="sus-id">EMP003</span><span class="sus-name">Siddharth Iyer</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP004"></div><span class="sus-id">EMP004</span><span class="sus-name">Meera Nair</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP006"></div><span class="sus-id">EMP006</span><span class="sus-name">Neha Gupta</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP007"></div><span class="sus-id">EMP007</span><span class="sus-name">Rohan Mehta</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP008"></div><span class="sus-id">EMP008</span><span class="sus-name">Vikram Das</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP009"></div><span class="sus-id">EMP009</span><span class="sus-name">Anjali Bose</span></div>
+        <div class="sus-item"><div class="sus-dot" id="sd-EMP010"></div><span class="sus-id">EMP010</span><span class="sus-name">Kiran Pillai</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="vdrag" id="vd1" data-left="panel-story" data-right="panel-editor-wrap"></div>
+
+  <!-- CENTER: EDITOR -->
+  <div id="panel-editor-wrap" style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-width:200px;">
+    <div class="panel-editor" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="ed-toolbar">
+        <span class="ed-fname" id="ed-fname">investigation.py</span>
+        <button class="clr-btn" id="clr-btn" onclick="clearEditor()">CLEAR</button>
+        <button class="run-btn" id="run-btn" onclick="runCode()" disabled>▶ RUN (Ctrl+↵)</button>
+      </div>
+      <div class="ed-wrap" id="ed-wrap">
+        <textarea id="code-ed"></textarea>
+      </div>
+    </div>
+    <div class="hdrag" id="hd1"></div>
+    <div class="out-panel" id="out-panel">
+      <div class="out-hdr">
+        OUTPUT TERMINAL
+        <span id="out-run-info" style="font-family:var(--ui);font-size:.5rem;color:var(--muted);flex:1;padding-left:8px;"></span>
+        <button class="out-clr" onclick="clearOut()">CLEAR</button>
+      </div>
+      <div class="out-scroll" id="out-scroll">
+        <pre class="os">// Python runtime loading...</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="vdrag" id="vd2" data-left="panel-editor-wrap" data-right="panel-right"></div>
+
+  <!-- RIGHT -->
+  <div class="panel-right" id="panel-right">
+    <div class="ph"><span class="ph-icon">✓</span>ANSWER — CH.<span id="ans-ch">1</span></div>
+    <div class="ans-sec">
+      <input type="text" class="ans-inp" id="ans-inp" placeholder="Run code → type your answer here..." onkeydown="if(event.key==='Enter')submit()"/>
+      <div class="ans-row">
+        <button class="btn-sub" onclick="submit()">SUBMIT ANSWER</button>
+        <button class="btn-hint" onclick="hint()">HINT</button>
+      </div>
+      <div class="ans-fb" id="ans-fb"></div>
+    </div>
+
+    <div class="prog-sec">
+      <div class="prog-ttl">INVESTIGATION PROGRESS</div>
+      <div class="prog-bar-o"><div class="prog-bar-i" id="prog-bar"></div></div>
+      <div class="prog-sc">Score: <strong id="score-side">0</strong> / 99 pts</div>
+      <div id="cli-list"></div>
+    </div>
+
+    <!-- Dataset Explorer -->
+    <div class="ds-sec">
+      <div class="ds-hdr" onclick="toggleDS()">
+        <span class="ds-arrow" id="ds-arrow">▶</span>
+        DATASET EXPLORER
+      </div>
+      <div class="ds-body" id="ds-body"></div>
+    </div>
+
+    <!-- Pip installer -->
+    <div class="pip-sec">
+      <div class="pip-ttl">INSTALL PACKAGE</div>
+      <div class="pip-row">
+        <input type="text" class="pip-inp" id="pip-inp" placeholder="e.g. scipy" onkeydown="if(event.key==='Enter')installPkg()"/>
+        <button class="pip-btn" onclick="installPkg()">INSTALL</button>
+      </div>
+      <div class="pip-sub">Or type <code>!pip install scipy</code> in the editor</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+
+const CSV_DATA={"server_access_logs": "log_id,employee_id,employee_name,timestamp,ip_address,server_node,access_type,status,session_duration_min,bytes_transferred\n174,EMP002,Kavya Reddy,2024-03-16 01:06:15,192.168.1.13,NODE-C,READ,FAILED,84.0,10216\n133,EMP008,Vikram Das,2024-03-15 16:59:13,10.0.1.130,NODE-BACKUP,WRITE,SUCCESS,48.0,12582\n198,EMP004,Meera Nair,2024-03-14 01:29:24,192.168.2.220,NODE-B,READ,SUCCESS,83.0,39234\n10,EMP002,Kavya Reddy,2024-03-13 18:44:05,192.168.1.179,NODE-B,READ,SUCCESS,15.0,15756\n105,EMP001,Priya Sharma,2024-03-15 21:44:06,192.168.1.201,NODE-A,READ,SUCCESS,33.0,43107\n120,EMP006,Neha Gupta,2024-03-15 16:14:37,192.168.2.100,NODE-C,READ,SUCCESS,40.0,39569\n257,EMP001,Priya Sharma,2024-03-15 19:52:07,192.168.1.105,NODE-B,WRITE,SUCCESS,46.0,4527\n159,EMP007,Rohan Mehta,2024-03-15 01:55:00,203.45.67.89,NODE-BACKUP,READ,SUCCESS,2.0,12000\n227,EMP004,Meera Nair,2024-03-14 23:47:28,192.168.2.29,NODE-C,WRITE,SUCCESS,68.0,33520\n313,EMP008,Vikram Das,2024-03-15 17:59:40,10.0.1.83,NODE-B,READ,SUCCESS,,37726\n197,EMP008,Vikram Das,2024-03-14 00:33:16,10.0.1.35,NODE-C,READ,SUCCESS,8.0,26192\n91,EMP009,Anjali Bose,2024-03-14 17:22:33,192.168.1.225,NODE-C,READ,SUCCESS,67.0,41574\n282,EMP003,Siddharth Iyer,2024-03-15 19:01:41,10.0.0.146,NODE-A,WRITE,SUCCESS,76.0,38153\n85,EMP007,Rohan Mehta,2024-03-14 16:59:16,10.0.0.193,NODE-BACKUP,WRITE,SUCCESS,56.0,16489\n186,EMP010,Kiran Pillai,2024-03-14 18:11:24,192.168.2.58,NODE-C,READ,SUCCESS,81.0,6467\n270,EMP001,Priya Sharma,2024-03-15 17:32:03,192.168.1.125,NODE-B,READ,FAILED,10.0,37712\n127,EMP007,Rohan Mehta,2024-03-15 18:30:54,10.0.0.194,NODE-B,READ,SUCCESS,20.0,49185\n79,EMP006,Neha Gupta,2024-03-14 19:15:01,192.168.2.150,NODE-A,READ,SUCCESS,41.0,14274\n26,EMP006,Neha Gupta,2024-03-13 17:42:35,192.168.2.247,NODE-C,READ,SUCCESS,35.0,4296\n6,EMP001,Priya Sharma,2024-03-13 19:40:12,192.168.1.49,NODE-B,READ,SUCCESS,18.0,6578\n205,EMP001,Priya Sharma,2024-03-15 00:28:22,192.168.1.119,NODE-C,READ,FAILED,57.0,4916\n56,EMP001,Priya Sharma,2024-03-14 19:13:56,192.168.1.237,NODE-A,READ,SUCCESS,24.0,18348\n47,EMP010,Kiran Pillai,2024-03-13 18:07:32,192.168.2.27,NODE-A,READ,SUCCESS,56.0,8356\n306,EMP004,Meera Nair,2024-03-13 18:47:24,192.168.2.86,NODE-A,READ,SUCCESS,27.0,32147\n300,EMP006,Neha Gupta,2024-03-14 22:44:17,192.168.2.116,NODE-C,READ,SUCCESS,77.0,31202\n115,EMP004,Meera Nair,2024-03-15 17:48:40,192.168.2.37,NODE-BACKUP,READ,SUCCESS,86.0,30629\n58,EMP001,Priya Sharma,2024-03-14 20:55:35,192.168.1.139,NODE-BACKUP,READ,SUCCESS,120.0,3829\n78,EMP006,Neha Gupta,2024-03-14 18:29:45,192.168.2.180,NODE-BACKUP,READ,SUCCESS,83.0,37796\n196,EMP002,Kavya Reddy,2024-03-14 22:09:23,192.168.1.250,NODE-B,READ,SUCCESS,28.0,29157\n256,EMP003,Siddharth Iyer,2024-03-15 22:40:55,10.0.0.144,NODE-B,READ,SUCCESS,50.0,30910\n109,EMP003,Siddharth Iyer,2024-03-15 18:18:13,10.0.0.201,NODE-A,READ,SUCCESS,44.0,7584\n209,EMP002,Kavya Reddy,2024-03-14 20:16:03,192.168.1.180,NODE-B,READ,SUCCESS,,31181\n64,EMP003,Siddharth Iyer,2024-03-14 18:03:05,10.0.0.209,NODE-BACKUP,READ,SUCCESS,100.0,10628\n210,EMP002,Kavya Reddy,2024-03-14 00:19:03,192.168.1.33,NODE-B,READ,SUCCESS,17.0,36562\n249,EMP002,Kavya Reddy,2024-03-14 00:10:01,192.168.1.236,NODE-B,READ,FAILED,7.0,26082\n173,EMP003,Siddharth Iyer,2024-03-15 01:38:53,10.0.0.42,NODE-C,WRITE,SUCCESS,13.0,28955\n292,EMP006,Neha Gupta,2024-03-13 16:30:19,192.168.2.136,NODE-C,WRITE,FAILED,37.0,35272\n34,EMP007,Rohan Mehta,2024-03-13 19:55:47,10.0.0.28,NODE-B,READ,SUCCESS,90.0,32312\n144,EMP009,Anjali Bose,2024-03-15 20:54:44,192.168.1.48,NODE-C,READ,SUCCESS,14.0,4408\n165,EMP004,Meera Nair,2024-03-15 19:37:04,192.168.2.203,NODE-B,WRITE,FAILED,7.0,13440\n304,EMP009,Anjali Bose,2024-03-13 21:36:31,192.168.1.179,NODE-B,WRITE,FAILED,41.0,11449\n43,EMP009,Anjali Bose,2024-03-13 17:42:03,192.168.1.109,NODE-C,WRITE,SUCCESS,41.0,28222\n308,EMP009,Anjali Bose,2024-03-15 00:57:27,192.168.1.111,NODE-B,READ,SUCCESS,6.0,18950\n319,EMP009,Anjali Bose,2024-03-14 16:52:02,192.168.1.181,NODE-A,READ,SUCCESS,62.0,21307\n46,EMP010,Kiran Pillai,2024-03-13 17:15:05,192.168.2.228,NODE-B,READ,SUCCESS,70.0,5750\n303,EMP006,Neha Gupta,2024-03-14 17:30:51,192.168.2.186,NODE-A,READ,FAILED,8.0,9149\n83,EMP006,Neha Gupta,2024-03-14 22:01:02,192.168.2.89,NODE-B,READ,SUCCESS,23.0,2100\n95,EMP009,Anjali Bose,2024-03-14 19:57:55,192.168.1.129,NODE-BACKUP,READ,SUCCESS,31.0,28034\n17,EMP003,Siddharth Iyer,2024-03-13 19:17:52,10.0.0.244,NODE-BACKUP,READ,SUCCESS,38.0,9650\n76,EMP006,Neha Gupta,2024-03-14 17:18:41,192.168.2.179,NODE-A,READ,SUCCESS,69.0,20769\n94,EMP009,Anjali Bose,2024-03-14 19:17:29,192.168.1.49,NODE-B,READ,SUCCESS,58.0,27212\n8,EMP001,Priya Sharma,2024-03-13 21:15:53,192.168.1.147,NODE-A,WRITE,SUCCESS,15.0,36678\n180,EMP002,Kavya Reddy,2024-03-16 00:42:30,192.168.1.168,NODE-C,READ,FAILED,75.0,9479\n77,EMP006,Neha Gupta,2024-03-14 18:02:00,192.168.2.93,NODE-BACKUP,READ,SUCCESS,75.0,8841\n288,EMP006,Neha Gupta,2024-03-15 21:36:59,192.168.2.91,NODE-A,READ,SUCCESS,35.0,29564\n284,EMP001,Priya Sharma,2024-03-15 23:42:36,192.168.1.77,NODE-C,READ,FAILED,80.0,2084\n316,EMP010,Kiran Pillai,2024-03-14 01:17:04,192.168.2.95,NODE-B,READ,FAILED,18.0,33144\n4,EMP001,Priya Sharma,2024-03-13 18:22:50,192.168.1.193,NODE-BACKUP,READ,SUCCESS,62.0,39118\n226,EMP002,Kavya Reddy,2024-03-13 20:21:24,192.168.1.112,NODE-C,READ,FAILED,40.0,22350\n117,EMP004,Meera Nair,2024-03-15 19:06:28,192.168.2.245,NODE-BACKUP,WRITE,SUCCESS,60.0,48408\n230,EMP008,Vikram Das,2024-03-15 23:35:55,10.0.1.124,NODE-C,WRITE,SUCCESS,81.0,20818\n61,EMP002,Kavya Reddy,2024-03-14 18:58:49,192.168.1.38,NODE-A,READ,SUCCESS,74.0,2861\n245,EMP004,Meera Nair,2024-03-15 01:39:21,192.168.2.210,NODE-B,READ,SUCCESS,,37483\n262,EMP004,Meera Nair,2024-03-14 19:34:11,192.168.2.209,NODE-A,WRITE,SUCCESS,35.0,8257\n119,EMP004,Meera Nair,2024-03-15 20:19:18,192.168.2.128,NODE-BACKUP,READ,SUCCESS,8.0,32894\n181,EMP004,Meera Nair,2024-03-14 22:22:44,192.168.2.127,NODE-B,WRITE,SUCCESS,60.0,18950\n18,EMP004,Meera Nair,2024-03-13 18:16:50,192.168.2.77,NODE-BACKUP,READ,SUCCESS,56.0,24223\n25,EMP006,Neha Gupta,2024-03-13 17:22:52,192.168.2.148,NODE-A,READ,SUCCESS,46.0,32521\n177,EMP010,Kiran Pillai,2024-03-13 18:20:51,192.168.2.185,NODE-B,READ,SUCCESS,56.0,6551\n111,EMP003,Siddharth Iyer,2024-03-15 19:35:53,10.0.0.193,NODE-B,READ,SUCCESS,80.0,45760\n74,EMP005,Arjun Nair,2024-03-14 20:09:28,10.0.0.240,NODE-B,READ,SUCCESS,10.0,46950\n102,EMP001,Priya Sharma,2024-03-15 19:28:04,192.168.1.128,NODE-B,READ,SUCCESS,38.0,25344\n138,EMP008,Vikram Das,2024-03-15 20:39:15,10.0.1.86,NODE-BACKUP,READ,SUCCESS,77.0,41199\n254,EMP002,Kavya Reddy,2024-03-14 00:22:00,192.168.1.137,NODE-C,WRITE,SUCCESS,81.0,33875\n272,EMP003,Siddharth Iyer,2024-03-14 21:10:38,10.0.0.243,NODE-C,READ,SUCCESS,34.0,29346\n114,EMP004,Meera Nair,2024-03-15 17:01:50,192.168.2.27,NODE-C,READ,SUCCESS,113.0,28028\n219,EMP008,Vikram Das,2024-03-14 18:43:54,10.0.1.203,NODE-C,READ,SUCCESS,56.0,7367\n321,EMP010,Kiran Pillai,2024-03-13 18:36:55,192.168.2.102,NODE-C,READ,SUCCESS,86.0,7847\n246,EMP008,Vikram Das,2024-03-14 23:41:39,10.0.1.209,NODE-B,WRITE,FAILED,21.0,13187\n32,EMP007,Rohan Mehta,2024-03-13 18:07:55,10.0.0.15,NODE-B,READ,SUCCESS,33.0,971\n269,EMP001,Priya Sharma,2024-03-13 16:40:20,192.168.1.209,NODE-C,READ,SUCCESS,50.0,37274\n169,EMP008,Vikram Das,2024-03-13 20:34:04,10.0.1.47,NODE-B,READ,SUCCESS,9.0,18204\n149,EMP003,Siddharth Iyer,2024-03-15 01:45:00,10.0.0.45,NODE-A,READ,SUCCESS,12.0,1200\n222,EMP001,Priya Sharma,2024-03-14 23:28:12,192.168.1.54,NODE-A,READ,SUCCESS,65.0,36716\n228,EMP004,Meera Nair,2024-03-14 19:30:39,192.168.2.219,NODE-C,READ,SUCCESS,14.0,9697\n140,EMP009,Anjali Bose,2024-03-15 18:02:26,192.168.1.71,NODE-B,READ,SUCCESS,14.0,10758\n60,EMP002,Kavya Reddy,2024-03-14 18:29:23,192.168.1.51,NODE-BACKUP,READ,SUCCESS,95.0,28528\n164,EMP006,Neha Gupta,2024-03-14 01:42:06,192.168.2.113,NODE-C,READ,FAILED,53.0,3652\n7,EMP001,Priya Sharma,2024-03-13 20:23:23,192.168.1.101,NODE-C,READ,SUCCESS,38.0,3347\n199,EMP001,Priya Sharma,2024-03-13 23:52:04,192.168.1.72,NODE-A,WRITE,SUCCESS,9.0,36420\n31,EMP007,Rohan Mehta,2024-03-13 17:35:12,10.0.0.240,NODE-BACKUP,READ,SUCCESS,36.0,15225\n23,EMP005,Arjun Nair,2024-03-13 18:55:02,10.0.0.126,NODE-A,READ,SUCCESS,69.0,12208\n275,EMP002,Kavya Reddy,2024-03-15 21:25:18,192.168.1.238,NODE-B,READ,SUCCESS,47.0,33441\n248,EMP009,Anjali Bose,2024-03-13 18:51:02,192.168.1.205,NODE-A,READ,FAILED,66.0,9756\n57,EMP001,Priya Sharma,2024-03-14 19:56:27,192.168.1.63,NODE-C,READ,SUCCESS,92.0,42065\n168,EMP002,Kavya Reddy,2024-03-16 00:19:17,192.168.1.137,NODE-C,READ,SUCCESS,54.0,31721\n146,EMP010,Kiran Pillai,2024-03-15 18:02:39,192.168.2.189,NODE-BACKUP,READ,SUCCESS,69.0,35888\n207,EMP009,Anjali Bose,2024-03-14 20:32:13,192.168.1.164,NODE-B,READ,SUCCESS,84.0,36232\n82,EMP006,Neha Gupta,2024-03-14 21:20:30,192.168.2.179,NODE-C,READ,SUCCESS,109.0,49726\n148,EMP010,Kiran Pillai,2024-03-15 19:24:06,192.168.2.16,NODE-A,READ,SUCCESS,91.0,38196\n40,EMP008,Vikram Das,2024-03-13 18:55:29,10.0.1.246,NODE-A,WRITE,SUCCESS,108.0,36566\n223,EMP006,Neha Gupta,2024-03-13 19:58:14,192.168.2.199,NODE-A,READ,SUCCESS,59.0,5202\n310,EMP009,Anjali Bose,2024-03-15 01:19:48,192.168.1.188,NODE-B,READ,SUCCESS,79.0,38558\n184,EMP006,Neha Gupta,2024-03-15 18:57:31,192.168.2.189,NODE-B,READ,FAILED,36.0,630\n153,EMP001,Priya Sharma,2024-03-14 22:36:00,192.168.1.88,NODE-C,WRITE,FAILED,0.0,0\n141,EMP009,Anjali Bose,2024-03-15 18:42:04,192.168.1.125,NODE-BACKUP,READ,SUCCESS,9.0,15670\n110,EMP003,Siddharth Iyer,2024-03-15 18:59:21,10.0.0.247,NODE-C,READ,SUCCESS,91.0,25096\n67,EMP003,Siddharth Iyer,2024-03-14 20:31:55,10.0.0.217,NODE-B,READ,SUCCESS,25.0,46458\n200,EMP004,Meera Nair,2024-03-15 18:09:34,192.168.2.232,NODE-A,READ,SUCCESS,77.0,285\n19,EMP004,Meera Nair,2024-03-13 18:48:34,192.168.2.45,NODE-BACKUP,READ,SUCCESS,101.0,3587\n187,EMP001,Priya Sharma,2024-03-14 23:53:09,192.168.1.18,NODE-C,READ,SUCCESS,12.0,19440\n154,EMP001,Priya Sharma,2024-03-14 23:05:00,192.168.1.88,NODE-C,WRITE,SUCCESS,8.0,3200\n20,EMP004,Meera Nair,2024-03-13 19:49:49,192.168.2.49,NODE-B,WRITE,SUCCESS,81.0,4663\n224,EMP006,Neha Gupta,2024-03-15 20:17:34,192.168.2.113,NODE-C,WRITE,FAILED,38.0,7648\n93,EMP009,Anjali Bose,2024-03-14 18:34:04,192.168.1.238,NODE-A,READ,SUCCESS,24.0,15655\n80,EMP006,Neha Gupta,2024-03-14 20:00:53,192.168.2.158,NODE-C,WRITE,SUCCESS,61.0,29477\n125,EMP007,Rohan Mehta,2024-03-15 17:14:11,10.0.0.145,NODE-C,WRITE,SUCCESS,100.0,36570\n185,EMP010,Kiran Pillai,2024-03-15 23:46:59,192.168.2.22,NODE-C,WRITE,FAILED,37.0,15181\n73,EMP005,Arjun Nair,2024-03-14 19:34:22,10.0.0.211,NODE-C,WRITE,SUCCESS,,34016\n97,EMP010,Kiran Pillai,2024-03-14 17:08:57,192.168.2.109,NODE-BACKUP,READ,SUCCESS,100.0,48644\n16,EMP003,Siddharth Iyer,2024-03-13 18:30:19,10.0.0.155,NODE-C,READ,SUCCESS,88.0,33217\n112,EMP003,Siddharth Iyer,2024-03-15 20:30:55,10.0.0.72,NODE-A,READ,SUCCESS,113.0,45343\n11,EMP002,Kavya Reddy,2024-03-13 19:49:59,192.168.1.107,NODE-C,WRITE,SUCCESS,,24409\n183,EMP008,Vikram Das,2024-03-14 17:59:31,10.0.1.108,NODE-B,READ,SUCCESS,49.0,37581\n70,EMP004,Meera Nair,2024-03-14 18:29:47,192.168.2.94,NODE-C,READ,SUCCESS,103.0,18792\n98,EMP010,Kiran Pillai,2024-03-14 17:58:23,192.168.2.164,NODE-B,WRITE,SUCCESS,33.0,18387\n235,EMP008,Vikram Das,2024-03-15 17:30:30,10.0.1.25,NODE-B,READ,SUCCESS,11.0,33166\n69,EMP004,Meera Nair,2024-03-14 17:52:29,192.168.2.220,NODE-B,READ,SUCCESS,8.0,43755\n24,EMP005,Arjun Nair,2024-03-13 19:39:13,10.0.0.37,NODE-C,READ,SUCCESS,82.0,13535\n38,EMP008,Vikram Das,2024-03-13 17:45:50,10.0.1.214,NODE-A,READ,SUCCESS,29.0,12965\n233,EMP002,Kavya Reddy,2024-03-16 00:38:33,192.168.1.228,NODE-A,WRITE,FAILED,60.0,38132\n68,EMP004,Meera Nair,2024-03-14 17:26:09,192.168.2.229,NODE-BACKUP,READ,SUCCESS,30.0,30666\n259,EMP006,Neha Gupta,2024-03-15 19:23:07,192.168.2.174,NODE-A,WRITE,FAILED,90.0,31461\n239,EMP010,Kiran Pillai,2024-03-15 17:24:51,192.168.2.99,NODE-B,WRITE,FAILED,17.0,39096\n126,EMP007,Rohan Mehta,2024-03-15 17:51:55,10.0.0.189,NODE-BACKUP,READ,SUCCESS,44.0,16975\n287,EMP006,Neha Gupta,2024-03-15 17:26:12,192.168.2.230,NODE-C,READ,SUCCESS,52.0,8669\n87,EMP008,Vikram Das,2024-03-14 16:24:07,10.0.1.188,NODE-BACKUP,READ,SUCCESS,76.0,16831\n273,EMP004,Meera Nair,2024-03-15 18:51:20,192.168.2.244,NODE-B,READ,SUCCESS,18.0,4953\n147,EMP010,Kiran Pillai,2024-03-15 18:38:48,192.168.2.30,NODE-A,WRITE,SUCCESS,99.0,21623\n286,EMP008,Vikram Das,2024-03-13 22:53:10,10.0.1.50,NODE-B,READ,FAILED,60.0,13470\n263,EMP006,Neha Gupta,2024-03-15 00:53:41,192.168.2.200,NODE-B,READ,SUCCESS,24.0,32619\n238,EMP002,Kavya Reddy,2024-03-15 22:47:01,192.168.1.82,NODE-B,WRITE,SUCCESS,,5441\n145,EMP010,Kiran Pillai,2024-03-15 17:17:51,192.168.2.221,NODE-C,WRITE,SUCCESS,20.0,31216\n211,EMP001,Priya Sharma,2024-03-16 01:33:58,192.168.1.153,NODE-B,WRITE,SUCCESS,53.0,23273\n156,EMP007,Rohan Mehta,2024-03-15 02:03:00,203.45.67.89,NODE-BACKUP,WRITE,SUCCESS,2.0,150000\n261,EMP004,Meera Nair,2024-03-13 19:09:21,192.168.2.89,NODE-C,READ,FAILED,33.0,2499\n130,EMP007,Rohan Mehta,2024-03-15 20:38:53,10.0.0.102,NODE-B,READ,SUCCESS,6.0,46900\n39,EMP008,Vikram Das,2024-03-13 18:22:05,10.0.1.45,NODE-BACKUP,READ,SUCCESS,40.0,30818\n225,EMP001,Priya Sharma,2024-03-14 17:43:07,192.168.1.168,NODE-B,WRITE,SUCCESS,12.0,28720\n194,EMP002,Kavya Reddy,2024-03-13 16:27:12,192.168.1.19,NODE-B,READ,SUCCESS,13.0,15487\n158,EMP007,Rohan Mehta,2024-03-15 02:14:00,203.45.67.89,NODE-A,WRITE,SUCCESS,1.0,200000\n113,EMP004,Meera Nair,2024-03-15 16:23:53,192.168.2.154,NODE-A,READ,SUCCESS,73.0,28574\n212,EMP001,Priya Sharma,2024-03-14 22:00:14,192.168.1.100,NODE-A,WRITE,SUCCESS,20.0,31700\n118,EMP004,Meera Nair,2024-03-15 19:47:46,192.168.2.92,NODE-B,READ,SUCCESS,40.0,30043\n299,EMP010,Kiran Pillai,2024-03-14 21:04:23,192.168.2.140,NODE-C,READ,SUCCESS,61.0,1190\n312,EMP006,Neha Gupta,2024-03-15 20:43:26,192.168.2.184,NODE-A,READ,SUCCESS,53.0,31275\n293,EMP001,Priya Sharma,2024-03-13 20:18:33,192.168.1.235,NODE-B,WRITE,SUCCESS,52.0,24082\n178,EMP002,Kavya Reddy,2024-03-14 17:39:49,192.168.1.86,NODE-A,READ,SUCCESS,8.0,19326\n266,EMP008,Vikram Das,2024-03-15 23:10:35,10.0.1.52,NODE-C,READ,SUCCESS,58.0,2875\n155,EMP007,Rohan Mehta,2024-03-15 01:58:00,203.45.67.89,NODE-BACKUP,DELETE,SUCCESS,4.0,98000\n204,EMP004,Meera Nair,2024-03-15 16:26:01,192.168.2.210,NODE-C,WRITE,SUCCESS,59.0,2141\n3,EMP001,Priya Sharma,2024-03-13 17:24:53,192.168.1.65,NODE-B,READ,SUCCESS,82.0,2239\n116,EMP004,Meera Nair,2024-03-15 18:27:13,192.168.2.121,NODE-B,READ,SUCCESS,88.0,18200\n166,EMP009,Anjali Bose,2024-03-14 01:16:36,192.168.1.122,NODE-C,READ,SUCCESS,4.0,15782\n203,EMP009,Anjali Bose,2024-03-13 23:27:23,192.168.1.131,NODE-B,READ,SUCCESS,58.0,33119\n121,EMP006,Neha Gupta,2024-03-15 17:03:02,192.168.2.80,NODE-A,READ,SUCCESS,29.0,6110\n291,EMP008,Vikram Das,2024-03-13 16:54:01,10.0.1.110,NODE-C,READ,SUCCESS,28.0,38330\n280,EMP009,Anjali Bose,2024-03-14 00:18:50,192.168.1.142,NODE-A,READ,SUCCESS,21.0,21245\n128,EMP007,Rohan Mehta,2024-03-15 19:22:04,10.0.0.205,NODE-B,READ,SUCCESS,32.0,48905\n75,EMP005,Arjun Nair,2024-03-14 21:01:04,10.0.0.143,NODE-B,READ,SUCCESS,60.0,5085\n30,EMP007,Rohan Mehta,2024-03-13 17:03:53,10.0.0.61,NODE-C,WRITE,SUCCESS,90.0,43090\n84,EMP007,Rohan Mehta,2024-03-14 16:29:31,10.0.0.166,NODE-A,WRITE,SUCCESS,58.0,41772\n268,EMP006,Neha Gupta,2024-03-16 00:00:39,192.168.2.183,NODE-A,READ,SUCCESS,78.0,28816\n108,EMP002,Kavya Reddy,2024-03-15 19:40:55,192.168.1.65,NODE-BACKUP,READ,SUCCESS,103.0,24675\n176,EMP006,Neha Gupta,2024-03-16 00:35:36,192.168.2.107,NODE-B,WRITE,FAILED,70.0,2452\n182,EMP009,Anjali Bose,2024-03-13 16:44:19,192.168.1.98,NODE-C,READ,FAILED,89.0,16490\n134,EMP008,Vikram Das,2024-03-15 17:52:57,10.0.1.74,NODE-BACKUP,READ,SUCCESS,110.0,4782\n220,EMP010,Kiran Pillai,2024-03-14 21:16:09,192.168.2.88,NODE-A,READ,FAILED,77.0,3690\n250,EMP009,Anjali Bose,2024-03-14 18:21:28,192.168.1.30,NODE-B,READ,SUCCESS,41.0,6593\n298,EMP009,Anjali Bose,2024-03-13 19:16:46,192.168.1.166,NODE-B,READ,FAILED,79.0,19710\n66,EMP003,Siddharth Iyer,2024-03-14 19:24:44,10.0.0.198,NODE-C,WRITE,SUCCESS,107.0,44403\n229,EMP004,Meera Nair,2024-03-13 22:01:26,192.168.2.204,NODE-C,READ,SUCCESS,81.0,32482\n86,EMP007,Rohan Mehta,2024-03-14 17:28:25,10.0.0.186,NODE-A,READ,SUCCESS,104.0,28362\n247,EMP010,Kiran Pillai,2024-03-14 00:43:48,192.168.2.23,NODE-C,READ,SUCCESS,71.0,6823\n160,EMP010,Kiran Pillai,2024-03-14 01:59:44,192.168.2.182,NODE-B,WRITE,SUCCESS,23.0,30934\n13,EMP002,Kavya Reddy,2024-03-13 21:07:26,192.168.1.165,NODE-B,READ,SUCCESS,98.0,16543\n36,EMP008,Vikram Das,2024-03-13 16:02:49,10.0.1.178,NODE-BACKUP,READ,SUCCESS,59.0,27441\n29,EMP007,Rohan Mehta,2024-03-13 16:07:57,10.0.0.233,NODE-BACKUP,READ,SUCCESS,74.0,49997\n171,EMP008,Vikram Das,2024-03-13 20:27:55,10.0.1.133,NODE-B,READ,FAILED,59.0,21188\n143,EMP009,Anjali Bose,2024-03-15 20:33:43,192.168.1.211,NODE-B,WRITE,SUCCESS,19.0,36188\n221,EMP001,Priya Sharma,2024-03-13 19:00:51,192.168.1.64,NODE-A,READ,SUCCESS,42.0,7963\n132,EMP008,Vikram Das,2024-03-15 16:19:08,10.0.1.202,NODE-BACKUP,READ,SUCCESS,116.0,1303\n195,EMP009,Anjali Bose,2024-03-13 19:53:11,192.168.1.104,NODE-C,WRITE,FAILED,76.0,10226\n52,EMP010,Kiran Pillai,2024-03-13 21:30:38,192.168.2.154,NODE-A,READ,SUCCESS,73.0,14469\n96,EMP009,Anjali Bose,2024-03-14 20:41:41,192.168.1.207,NODE-A,READ,SUCCESS,53.0,31759\n240,EMP002,Kavya Reddy,2024-03-14 21:35:21,192.168.1.174,NODE-B,READ,SUCCESS,83.0,27848\n179,EMP006,Neha Gupta,2024-03-14 20:18:24,192.168.2.72,NODE-C,READ,SUCCESS,22.0,11573\n255,EMP010,Kiran Pillai,2024-03-13 23:11:07,192.168.2.84,NODE-B,READ,SUCCESS,31.0,37499\n42,EMP009,Anjali Bose,2024-03-13 17:14:34,192.168.1.64,NODE-BACKUP,READ,SUCCESS,26.0,25336\n90,EMP008,Vikram Das,2024-03-14 18:32:45,10.0.1.119,NODE-BACKUP,READ,SUCCESS,100.0,31608\n251,EMP006,Neha Gupta,2024-03-13 17:22:33,192.168.2.83,NODE-B,WRITE,SUCCESS,61.0,29499\n137,EMP008,Vikram Das,2024-03-15 19:48:11,10.0.1.212,NODE-B,READ,SUCCESS,53.0,30024\n27,EMP006,Neha Gupta,2024-03-13 18:31:13,192.168.2.155,NODE-A,READ,SUCCESS,98.0,32349\n317,EMP008,Vikram Das,2024-03-14 17:55:41,10.0.1.38,NODE-B,READ,FAILED,83.0,16960\n142,EMP009,Anjali Bose,2024-03-15 19:32:38,192.168.1.82,NODE-BACKUP,READ,SUCCESS,92.0,15797\n232,EMP006,Neha Gupta,2024-03-15 16:44:30,192.168.2.128,NODE-B,READ,SUCCESS,48.0,18913\n1,EMP001,Priya Sharma,2024-03-13 16:00:45,192.168.1.80,NODE-B,READ,SUCCESS,22.0,48765\n290,EMP006,Neha Gupta,2024-03-15 23:12:40,192.168.2.58,NODE-A,READ,FAILED,64.0,20320\n305,EMP008,Vikram Das,2024-03-15 19:25:23,10.0.1.100,NODE-C,WRITE,SUCCESS,79.0,31831\n307,EMP006,Neha Gupta,2024-03-14 19:29:16,192.168.2.249,NODE-C,READ,SUCCESS,16.0,37683\n101,EMP001,Priya Sharma,2024-03-15 19:09:12,192.168.1.161,NODE-A,READ,SUCCESS,87.0,28589\n193,EMP010,Kiran Pillai,2024-03-15 19:16:48,192.168.2.166,NODE-A,WRITE,SUCCESS,82.0,30526\n278,EMP008,Vikram Das,2024-03-15 20:06:28,10.0.1.114,NODE-C,READ,SUCCESS,41.0,4960\n214,EMP009,Anjali Bose,2024-03-15 22:08:08,192.168.1.174,NODE-C,READ,SUCCESS,4.0,11923\n104,EMP001,Priya Sharma,2024-03-15 20:56:20,192.168.1.222,NODE-BACKUP,READ,SUCCESS,111.0,5867\n172,EMP004,Meera Nair,2024-03-15 18:23:16,192.168.2.108,NODE-A,READ,SUCCESS,,31096\n99,EMP010,Kiran Pillai,2024-03-14 18:37:04,192.168.2.17,NODE-BACKUP,READ,SUCCESS,,45008\n37,EMP008,Vikram Das,2024-03-13 16:56:00,10.0.1.196,NODE-A,READ,SUCCESS,12.0,26886\n241,EMP009,Anjali Bose,2024-03-14 16:10:56,192.168.1.89,NODE-A,READ,SUCCESS,63.0,12683\n62,EMP002,Kavya Reddy,2024-03-14 19:49:02,192.168.1.159,NODE-B,WRITE,SUCCESS,21.0,3241\n151,EMP001,Priya Sharma,2024-03-14 22:32:00,192.168.1.88,NODE-C,WRITE,FAILED,0.0,0\n48,EMP010,Kiran Pillai,2024-03-13 18:52:14,192.168.2.155,NODE-B,READ,SUCCESS,81.0,3104\n234,EMP009,Anjali Bose,2024-03-16 00:57:31,192.168.1.125,NODE-C,WRITE,SUCCESS,42.0,39749\n267,EMP006,Neha Gupta,2024-03-16 01:58:53,192.168.2.80,NODE-C,READ,SUCCESS,86.0,26721\n12,EMP002,Kavya Reddy,2024-03-13 20:10:52,192.168.1.100,NODE-B,READ,SUCCESS,94.0,45296\n320,EMP004,Meera Nair,2024-03-13 18:36:28,192.168.2.70,NODE-B,READ,SUCCESS,39.0,38272\n201,EMP003,Siddharth Iyer,2024-03-13 21:24:07,10.0.0.214,NODE-A,READ,SUCCESS,17.0,1073\n289,EMP004,Meera Nair,2024-03-13 16:58:05,192.168.2.84,NODE-B,WRITE,FAILED,32.0,10566\n28,EMP006,Neha Gupta,2024-03-13 19:30:28,192.168.2.204,NODE-B,READ,SUCCESS,89.0,31648\n302,EMP003,Siddharth Iyer,2024-03-15 18:25:19,10.0.0.156,NODE-C,READ,SUCCESS,3.0,29003\n231,EMP003,Siddharth Iyer,2024-03-14 16:40:58,10.0.0.123,NODE-C,READ,SUCCESS,76.0,3781\n5,EMP001,Priya Sharma,2024-03-13 18:56:20,192.168.1.232,NODE-A,READ,SUCCESS,94.0,28196\n123,EMP006,Neha Gupta,2024-03-15 18:26:43,192.168.2.175,NODE-BACKUP,WRITE,SUCCESS,106.0,1630\n33,EMP007,Rohan Mehta,2024-03-13 18:50:07,10.0.0.171,NODE-A,READ,SUCCESS,13.0,2558\n243,EMP010,Kiran Pillai,2024-03-13 21:58:20,192.168.2.49,NODE-A,READ,SUCCESS,57.0,2963\n163,EMP008,Vikram Das,2024-03-14 22:37:33,10.0.1.112,NODE-C,READ,FAILED,12.0,20712\n283,EMP003,Siddharth Iyer,2024-03-13 22:35:14,10.0.0.194,NODE-C,READ,SUCCESS,4.0,5423\n276,EMP004,Meera Nair,2024-03-14 01:51:04,192.168.2.212,NODE-A,READ,FAILED,4.0,23751\n139,EMP008,Vikram Das,2024-03-15 20:55:48,10.0.1.199,NODE-A,READ,SUCCESS,85.0,14329\n63,EMP002,Kavya Reddy,2024-03-14 20:15:14,192.168.1.240,NODE-A,READ,SUCCESS,31.0,45199\n216,EMP001,Priya Sharma,2024-03-13 23:27:40,192.168.1.65,NODE-B,READ,FAILED,44.0,10415\n136,EMP008,Vikram Das,2024-03-15 19:16:28,10.0.1.31,NODE-B,READ,SUCCESS,76.0,27774\n301,EMP010,Kiran Pillai,2024-03-15 18:16:31,192.168.2.23,NODE-C,READ,SUCCESS,68.0,25016\n129,EMP007,Rohan Mehta,2024-03-15 20:02:31,10.0.0.195,NODE-C,READ,SUCCESS,,13221\n314,EMP004,Meera Nair,2024-03-15 23:23:12,192.168.2.227,NODE-A,READ,FAILED,23.0,2481\n9,EMP002,Kavya Reddy,2024-03-13 18:18:33,192.168.1.230,NODE-C,READ,SUCCESS,29.0,46674\n71,EMP005,Arjun Nair,2024-03-14 18:15:16,10.0.0.183,NODE-C,READ,SUCCESS,19.0,17618\n285,EMP008,Vikram Das,2024-03-15 21:27:20,10.0.1.174,NODE-B,READ,SUCCESS,88.0,26713\n65,EMP003,Siddharth Iyer,2024-03-14 19:09:46,10.0.0.70,NODE-B,READ,SUCCESS,117.0,27520\n45,EMP009,Anjali Bose,2024-03-13 19:12:31,192.168.1.24,NODE-A,READ,SUCCESS,12.0,3786\n15,EMP003,Siddharth Iyer,2024-03-13 17:48:52,10.0.0.18,NODE-C,WRITE,SUCCESS,39.0,4837\n157,EMP007,Rohan Mehta,2024-03-15 02:09:00,203.45.67.89,NODE-A,EXECUTE,SUCCESS,3.0,5000\n41,EMP008,Vikram Das,2024-03-13 19:32:56,10.0.1.176,NODE-A,READ,SUCCESS,101.0,15991\n296,EMP006,Neha Gupta,2024-03-14 21:34:41,192.168.2.103,NODE-A,READ,FAILED,65.0,2738\n124,EMP006,Neha Gupta,2024-03-15 18:50:47,192.168.2.66,NODE-BACKUP,READ,SUCCESS,44.0,44013\n297,EMP001,Priya Sharma,2024-03-13 17:22:13,192.168.1.95,NODE-B,WRITE,FAILED,20.0,39831\n279,EMP008,Vikram Das,2024-03-14 22:48:03,10.0.1.98,NODE-A,WRITE,SUCCESS,17.0,28452\n217,EMP006,Neha Gupta,2024-03-14 23:12:57,192.168.2.208,NODE-C,WRITE,SUCCESS,7.0,10296\n281,EMP004,Meera Nair,2024-03-15 01:28:29,192.168.2.142,NODE-B,READ,SUCCESS,26.0,36199\n237,EMP006,Neha Gupta,2024-03-15 21:58:43,192.168.2.212,NODE-C,WRITE,SUCCESS,9.0,21706\n208,EMP004,Meera Nair,2024-03-14 20:30:55,192.168.2.68,NODE-B,READ,FAILED,52.0,27362\n213,EMP004,Meera Nair,2024-03-13 19:30:04,192.168.2.152,NODE-B,READ,SUCCESS,74.0,14921\n295,EMP009,Anjali Bose,2024-03-14 23:38:38,192.168.1.81,NODE-C,WRITE,SUCCESS,17.0,6436\n252,EMP010,Kiran Pillai,2024-03-14 01:03:30,192.168.2.14,NODE-B,READ,SUCCESS,71.0,34688\n315,EMP008,Vikram Das,2024-03-14 01:21:57,10.0.1.233,NODE-B,READ,SUCCESS,39.0,37321\n202,EMP006,Neha Gupta,2024-03-13 21:53:18,192.168.2.14,NODE-A,READ,SUCCESS,17.0,27688\n162,EMP002,Kavya Reddy,2024-03-14 19:28:46,192.168.1.95,NODE-B,WRITE,SUCCESS,21.0,21714\n44,EMP009,Anjali Bose,2024-03-13 18:44:53,192.168.1.197,NODE-BACKUP,READ,SUCCESS,29.0,19945\n218,EMP003,Siddharth Iyer,2024-03-15 16:29:51,10.0.0.30,NODE-B,READ,FAILED,63.0,39885\n191,EMP002,Kavya Reddy,2024-03-14 16:08:21,192.168.1.147,NODE-A,READ,SUCCESS,87.0,17281\n260,EMP003,Siddharth Iyer,2024-03-13 16:37:51,10.0.0.208,NODE-B,READ,SUCCESS,26.0,2970\n106,EMP002,Kavya Reddy,2024-03-15 18:01:12,192.168.1.17,NODE-B,READ,SUCCESS,112.0,1835\n54,EMP001,Priya Sharma,2024-03-14 17:46:43,192.168.1.223,NODE-C,READ,SUCCESS,108.0,43358\n2,EMP001,Priya Sharma,2024-03-13 16:45:04,192.168.1.199,NODE-A,READ,SUCCESS,59.0,2582\n50,EMP010,Kiran Pillai,2024-03-13 20:09:29,192.168.2.71,NODE-C,WRITE,SUCCESS,21.0,44519\n81,EMP006,Neha Gupta,2024-03-14 20:50:16,192.168.2.140,NODE-BACKUP,READ,SUCCESS,89.0,6057\n206,EMP002,Kavya Reddy,2024-03-14 22:04:58,192.168.1.26,NODE-A,READ,SUCCESS,,39250\n35,EMP007,Rohan Mehta,2024-03-13 20:18:25,10.0.0.43,NODE-BACKUP,READ,SUCCESS,105.0,31496\n264,EMP008,Vikram Das,2024-03-15 01:14:35,10.0.1.142,NODE-B,READ,FAILED,11.0,28320\n92,EMP009,Anjali Bose,2024-03-14 17:49:10,192.168.1.122,NODE-A,READ,SUCCESS,35.0,18307\n53,EMP001,Priya Sharma,2024-03-14 17:03:58,192.168.1.99,NODE-A,READ,SUCCESS,52.0,19176\n265,EMP010,Kiran Pillai,2024-03-13 21:27:17,192.168.2.92,NODE-A,READ,SUCCESS,85.0,19475\n242,EMP004,Meera Nair,2024-03-13 17:32:58,192.168.2.85,NODE-A,WRITE,SUCCESS,85.0,22170\n14,EMP003,Siddharth Iyer,2024-03-13 17:11:23,10.0.0.246,NODE-B,READ,SUCCESS,112.0,4165\n89,EMP008,Vikram Das,2024-03-14 17:44:01,10.0.1.153,NODE-C,WRITE,SUCCESS,83.0,47638\n274,EMP008,Vikram Das,2024-03-14 00:59:12,10.0.1.123,NODE-A,WRITE,SUCCESS,86.0,22868\n167,EMP003,Siddharth Iyer,2024-03-14 21:30:30,10.0.0.151,NODE-B,READ,SUCCESS,15.0,30341\n318,EMP003,Siddharth Iyer,2024-03-13 23:21:58,10.0.0.212,NODE-B,WRITE,SUCCESS,23.0,26674\n135,EMP008,Vikram Das,2024-03-15 18:18:01,10.0.1.28,NODE-A,READ,SUCCESS,24.0,37386\n311,EMP004,Meera Nair,2024-03-13 16:30:27,192.168.2.241,NODE-C,READ,SUCCESS,7.0,6666\n244,EMP006,Neha Gupta,2024-03-15 23:11:45,192.168.2.123,NODE-C,READ,FAILED,30.0,35096\n55,EMP001,Priya Sharma,2024-03-14 18:39:52,192.168.1.180,NODE-C,READ,SUCCESS,117.0,9300\n51,EMP010,Kiran Pillai,2024-03-13 20:49:21,192.168.2.127,NODE-C,READ,SUCCESS,6.0,30534\n175,EMP002,Kavya Reddy,2024-03-14 23:48:54,192.168.1.77,NODE-B,WRITE,FAILED,84.0,5363\n190,EMP002,Kavya Reddy,2024-03-13 23:32:29,192.168.1.67,NODE-C,WRITE,FAILED,72.0,24071\n322,EMP008,Vikram Das,2024-03-14 17:35:49,10.0.1.185,NODE-C,WRITE,SUCCESS,89.0,7794\n188,EMP006,Neha Gupta,2024-03-15 20:09:18,192.168.2.61,NODE-A,WRITE,SUCCESS,68.0,32985\n170,EMP006,Neha Gupta,2024-03-15 18:40:18,192.168.2.10,NODE-B,WRITE,SUCCESS,76.0,38105\n59,EMP001,Priya Sharma,2024-03-14 21:14:46,192.168.1.118,NODE-C,READ,SUCCESS,5.0,22359\n49,EMP010,Kiran Pillai,2024-03-13 19:24:34,192.168.2.117,NODE-C,READ,SUCCESS,31.0,44391\n236,EMP003,Siddharth Iyer,2024-03-13 18:28:38,10.0.0.122,NODE-B,WRITE,SUCCESS,47.0,24535\n253,EMP002,Kavya Reddy,2024-03-14 18:22:35,192.168.1.41,NODE-A,READ,FAILED,82.0,30057\n22,EMP005,Arjun Nair,2024-03-13 18:21:37,10.0.0.184,NODE-C,READ,SUCCESS,19.0,19734\n161,EMP009,Anjali Bose,2024-03-15 20:25:20,192.168.1.81,NODE-A,WRITE,FAILED,82.0,32325\n277,EMP009,Anjali Bose,2024-03-15 19:41:20,192.168.1.215,NODE-C,READ,SUCCESS,9.0,20369\n192,EMP010,Kiran Pillai,2024-03-15 00:13:27,192.168.2.250,NODE-B,READ,SUCCESS,61.0,1740\n294,EMP001,Priya Sharma,2024-03-14 16:30:41,192.168.1.153,NODE-A,READ,SUCCESS,10.0,25419\n258,EMP006,Neha Gupta,2024-03-13 23:19:45,192.168.2.170,NODE-A,WRITE,SUCCESS,18.0,3005\n309,EMP002,Kavya Reddy,2024-03-15 01:14:24,192.168.1.177,NODE-B,WRITE,FAILED,28.0,13342\n150,EMP001,Priya Sharma,2024-03-14 22:30:00,192.168.1.88,NODE-C,WRITE,FAILED,0.0,0\n131,EMP007,Rohan Mehta,2024-03-15 21:28:01,10.0.0.80,NODE-A,READ,SUCCESS,75.0,19645\n152,EMP001,Priya Sharma,2024-03-14 22:34:00,192.168.1.88,NODE-C,WRITE,FAILED,0.0,0\n100,EMP001,Priya Sharma,2024-03-15 18:04:57,192.168.1.129,NODE-B,READ,SUCCESS,73.0,2267\n88,EMP008,Vikram Das,2024-03-14 17:09:31,10.0.1.41,NODE-BACKUP,READ,SUCCESS,107.0,30950\n215,EMP006,Neha Gupta,2024-03-14 16:03:39,192.168.2.232,NODE-A,WRITE,FAILED,9.0,9397\n122,EMP006,Neha Gupta,2024-03-15 17:31:14,192.168.2.114,NODE-BACKUP,READ,SUCCESS,102.0,16249\n323,EMP006,Neha Gupta,2024-03-15 18:12:30,192.168.2.44,NODE-B,READ,FAILED,78.0,24585\n21,EMP004,Meera Nair,2024-03-13 20:17:32,192.168.2.162,NODE-BACKUP,READ,SUCCESS,37.0,36756\n189,EMP003,Siddharth Iyer,2024-03-15 01:08:25,10.0.0.133,NODE-B,WRITE,SUCCESS,15.0,30792\n72,EMP005,Arjun Nair,2024-03-14 18:47:21,10.0.0.77,NODE-A,READ,SUCCESS,81.0,28979\n107,EMP002,Kavya Reddy,2024-03-15 19:00:38,192.168.1.71,NODE-B,WRITE,SUCCESS,90.0,7996\n271,EMP003,Siddharth Iyer,2024-03-15 19:40:10,10.0.0.90,NODE-C,READ,SUCCESS,15.0,1798\n103,EMP001,Priya Sharma,2024-03-15 20:15:49,192.168.1.126,NODE-C,READ,SUCCESS,102.0,25346\n", "financial_transactions": "txn_id,account_id,employee_id,timestamp,amount,merchant,txn_type,flagged,notes\nTXN00011,ACC-1001,EMP001,2024-03-15 09:01:20,2147.3,Swiggy,DEBIT,False,\nTXN00122,ACC-1005,EMP005,2024-03-27 19:12:02,4653.12,DMart,DEBIT,False,\nTXN00045,ACC-1002,EMP002,2024-02-18 14:31:39,3261.17,BigBasket,DEBIT,False,\nTXN00044,ACC-1002,EMP002,2024-02-20 20:48:42,2782.79,BigBasket,DEBIT,False,\nTXN00119,ACC-1004,EMP004,2024-03-07 14:45:39,2407.0,MakeMyTrip,DEBIT,False,\nTXN00077,ACC-1003,EMP003,2024-03-29 18:08:17,2528.92,Reliance Digital,DEBIT,False,\nTXN00301,ACC-1007,EMP007,2024-03-14 23:30:00,500000.0,NEXACORP Technologies,CREDIT,True,Final delivery\nTXN00016,ACC-1001,EMP001,2024-02-18 09:07:24,4822.51,BookMyShow,DEBIT,False,\nTXN00093,ACC-1004,EMP004,2024-02-04 14:54:13,363.17,Zomato,DEBIT,False,\nTXN00194,ACC-1006,EMP006,2024-03-08 20:26:31,109.73,Reliance Digital,DEBIT,False,\nTXN00008,ACC-1001,EMP001,2024-02-28 09:50:49,2106.35,Amazon,DEBIT,False,\nTXN00003,ACC-1001,EMP001,2024-03-08 14:15:16,3533.64,Swiggy,DEBIT,False,\nTXN00234,ACC-1008,EMP008,2024-01-31 12:05:00,4262.02,Zomato,DEBIT,False,\nTXN00037,ACC-1002,EMP002,2024-02-19 11:24:00,1056.52,Swiggy,DEBIT,False,\nTXN00050,ACC-1002,EMP002,2024-02-07 10:08:01,1682.83,Zomato,DEBIT,False,\nTXN00261,ACC-1009,EMP009,2024-02-14 20:46:38,2536.85,Zomato,DEBIT,False,\nTXN00149,ACC-1005,EMP005,2024-03-24 18:31:07,1523.66,Amazon,DEBIT,False,\nTXN00257,ACC-1009,EMP009,2024-01-08 09:13:41,1945.93,Zomato,DEBIT,False,\nTXN00145,ACC-1005,EMP005,2024-01-22 18:55:49,2849.97,MakeMyTrip,DEBIT,False,\nTXN00268,ACC-1010,EMP010,2024-01-23 11:18:42,1624.12,Reliance Digital,DEBIT,False,\nTXN00064,ACC-1003,EMP003,2024-02-04 19:07:44,441.15,Zomato,DEBIT,False,\nTXN00273,ACC-1010,EMP010,2024-01-01 12:38:39,3089.97,BookMyShow,DEBIT,False,\nTXN00085,ACC-1004,EMP004,2024-02-19 12:26:00,577.43,Amazon,DEBIT,False,\nTXN00091,ACC-1004,EMP004,2024-03-12 20:40:22,4891.96,BookMyShow,DEBIT,False,\nTXN00033,ACC-1002,EMP002,2024-03-30 13:49:42,788.63,Zomato,DEBIT,False,\nTXN00302,ACC-1010,EMP010,2024-03-12 10:00:00,200000.0,HDFC Bank,DEBIT,True,Home loan EMI prepayment\nTXN00272,ACC-1010,EMP010,2024-01-08 11:15:24,1133.1,MakeMyTrip,DEBIT,False,\nTXN00057,ACC-1003,EMP003,2024-01-09 17:54:01,95.25,MakeMyTrip,DEBIT,False,\nTXN00127,ACC-1005,EMP005,2024-02-19 08:03:44,1113.24,BigBasket,DEBIT,False,\nTXN00051,ACC-1003,EMP003,2024-02-01 14:59:24,3290.31,Reliance Digital,DEBIT,False,\nTXN00103,ACC-1004,EMP004,2024-02-16 09:35:39,2841.06,BookMyShow,DEBIT,False,\nTXN00206,ACC-1007,EMP007,2024-01-16 08:10:38,729.2,Amazon,DEBIT,False,\nTXN00143,ACC-1005,EMP005,2024-01-11 15:54:56,3989.61,DMart,DEBIT,False,\nTXN00208,ACC-1007,EMP007,2024-01-22 13:12:22,3761.39,BigBasket,DEBIT,False,\nTXN00176,ACC-1006,EMP006,2024-02-24 17:10:36,3533.31,Amazon,DEBIT,False,\nTXN00282,ACC-1010,EMP010,2024-02-09 18:16:33,1507.86,BookMyShow,DEBIT,False,\nTXN00102,ACC-1004,EMP004,2024-02-11 13:15:53,4091.65,Zomato,DEBIT,False,\nTXN00027,ACC-1001,EMP001,2024-01-18 15:03:16,1481.85,Reliance Digital,DEBIT,False,\nTXN00275,ACC-1010,EMP010,2024-01-08 08:18:24,2953.72,BookMyShow,DEBIT,False,\nTXN00246,ACC-1008,EMP008,2024-01-16 08:10:02,4160.34,DMart,DEBIT,False,\nTXN00201,ACC-1007,EMP007,2024-02-05 09:10:13,441.16,DMart,DEBIT,False,\nTXN00112,ACC-1004,EMP004,2024-01-22 17:03:28,269.27,Zomato,DEBIT,False,\nTXN00004,ACC-1001,EMP001,2024-03-13 09:34:15,4152.43,DMart,DEBIT,False,\nTXN00264,ACC-1009,EMP009,2024-03-01 15:24:43,3845.87,DMart,DEBIT,False,\nTXN00062,ACC-1003,EMP003,2024-01-23 09:29:53,526.75,BookMyShow,DEBIT,False,\nTXN00104,ACC-1004,EMP004,2024-03-28 18:44:47,183.23,MakeMyTrip,DEBIT,False,\nTXN00236,ACC-1008,EMP008,2024-02-04 11:16:14,4720.6,BookMyShow,DEBIT,False,\nTXN00116,ACC-1004,EMP004,2024-02-14 21:58:04,2439.72,BigBasket,DEBIT,False,\nTXN00125,ACC-1005,EMP005,2024-01-24 16:58:00,2189.07,Amazon,DEBIT,False,\nTXN00277,ACC-1010,EMP010,2024-02-17 17:51:48,3327.59,Swiggy,DEBIT,False,\nTXN00052,ACC-1003,EMP003,2024-02-02 18:41:13,2468.67,MakeMyTrip,DEBIT,False,\nTXN00082,ACC-1003,EMP003,2024-02-25 10:36:01,2950.08,Zomato,DEBIT,False,\nTXN00005,ACC-1001,EMP001,2024-03-14 15:30:47,864.46,MakeMyTrip,DEBIT,False,\nTXN00083,ACC-1003,EMP003,2024-01-11 18:48:37,1512.13,DMart,DEBIT,False,\nTXN00041,ACC-1002,EMP002,2024-03-02 10:55:28,4539.81,BigBasket,DEBIT,False,\nTXN00073,ACC-1003,EMP003,2024-03-10 15:53:20,212.86,Reliance Digital,DEBIT,False,\nTXN00224,ACC-1008,EMP008,2024-02-29 13:09:20,4860.7,DMart,DEBIT,False,\nTXN00007,ACC-1001,EMP001,2024-01-12 20:35:04,2255.14,Amazon,DEBIT,False,\nTXN00165,ACC-1006,EMP006,2024-01-09 19:08:22,2018.69,Zomato,DEBIT,False,\nTXN00135,ACC-1005,EMP005,2024-01-15 10:33:45,3482.51,Zomato,DEBIT,False,\nTXN00163,ACC-1006,EMP006,2024-02-28 21:18:12,1670.08,Amazon,DEBIT,False,\nTXN00217,ACC-1007,EMP007,2024-01-29 12:30:18,2110.47,Reliance Digital,DEBIT,False,\nTXN00120,ACC-1004,EMP004,2024-03-30 14:20:03,382.51,Amazon,DEBIT,False,\nTXN00213,ACC-1007,EMP007,2024-03-14 17:26:15,620.9,Amazon,DEBIT,False,\nTXN00137,ACC-1005,EMP005,2024-01-24 14:48:48,2710.03,BookMyShow,DEBIT,False,\nTXN00269,ACC-1010,EMP010,2024-03-16 08:23:41,3517.78,BookMyShow,DEBIT,False,\nTXN00284,ACC-1010,EMP010,2024-03-13 08:27:12,3031.82,DMart,DEBIT,False,\nTXN00267,ACC-1010,EMP010,2024-02-15 21:05:34,4958.13,BookMyShow,DEBIT,False,\nTXN00113,ACC-1004,EMP004,2024-02-12 21:31:12,2180.75,Amazon,DEBIT,False,\nTXN00225,ACC-1008,EMP008,2024-03-10 18:38:48,1263.38,Amazon,DEBIT,False,\nTXN00203,ACC-1007,EMP007,2024-02-09 17:46:53,3663.29,DMart,DEBIT,False,\nTXN00271,ACC-1010,EMP010,2024-03-10 12:19:36,2477.66,Swiggy,DEBIT,False,\nTXN00134,ACC-1005,EMP005,2024-03-27 09:52:30,633.42,BigBasket,DEBIT,False,\nTXN00295,ACC-1010,EMP010,2024-01-10 12:47:07,4445.26,BookMyShow,DEBIT,False,\nTXN00235,ACC-1008,EMP008,2024-03-30 19:38:47,1664.95,MakeMyTrip,DEBIT,False,\nTXN00133,ACC-1005,EMP005,2024-03-27 17:53:01,1522.35,Swiggy,DEBIT,False,\nTXN00197,ACC-1007,EMP007,2024-01-03 16:13:23,118.28,DMart,DEBIT,False,\nTXN00047,ACC-1002,EMP002,2024-01-13 19:14:21,3625.95,Reliance Digital,DEBIT,False,\nTXN00153,ACC-1005,EMP005,2024-03-31 16:32:37,2169.43,BookMyShow,DEBIT,False,\nTXN00111,ACC-1004,EMP004,2024-01-14 18:45:55,3305.13,Reliance Digital,DEBIT,False,\nTXN00087,ACC-1004,EMP004,2024-01-17 09:13:19,2183.35,Zomato,DEBIT,False,\nTXN00154,ACC-1005,EMP005,2024-01-27 19:23:21,4036.93,Reliance Digital,DEBIT,False,\nTXN00055,ACC-1003,EMP003,2024-03-08 08:28:24,4241.15,Amazon,DEBIT,False,\nTXN00108,ACC-1004,EMP004,2024-02-18 09:02:07,4953.97,MakeMyTrip,DEBIT,False,\nTXN00226,ACC-1008,EMP008,2024-02-22 08:20:05,2730.65,Amazon,DEBIT,False,\nTXN00067,ACC-1003,EMP003,2024-01-12 13:40:26,1916.99,MakeMyTrip,DEBIT,False,\nTXN00241,ACC-1008,EMP008,2024-01-28 19:42:10,1672.58,Swiggy,DEBIT,False,\nTXN00038,ACC-1002,EMP002,2024-02-27 19:51:35,507.7,DMart,DEBIT,False,\nTXN00248,ACC-1009,EMP009,2024-03-15 16:12:20,4591.27,Swiggy,DEBIT,False,\nTXN00252,ACC-1009,EMP009,2024-03-14 14:03:51,3635.93,MakeMyTrip,DEBIT,False,\nTXN00066,ACC-1003,EMP003,2024-02-08 17:34:35,4246.94,Amazon,DEBIT,False,\nTXN00010,ACC-1001,EMP001,2024-02-20 11:33:44,64.93,DMart,DEBIT,False,\nTXN00178,ACC-1006,EMP006,2024-03-07 17:31:11,95.97,Reliance Digital,DEBIT,False,\nTXN00181,ACC-1006,EMP006,2024-01-14 12:23:12,4410.9,BookMyShow,DEBIT,False,\nTXN00158,ACC-1005,EMP005,2024-02-05 20:08:19,678.1,BookMyShow,DEBIT,False,\nTXN00025,ACC-1001,EMP001,2024-02-01 18:22:03,2041.21,DMart,DEBIT,False,\nTXN00180,ACC-1006,EMP006,2024-03-02 08:59:29,1946.2,Swiggy,DEBIT,False,\nTXN00173,ACC-1006,EMP006,2024-01-12 17:09:51,1289.43,Reliance Digital,DEBIT,False,\nTXN00107,ACC-1004,EMP004,2024-01-31 11:32:15,813.01,Zomato,DEBIT,False,\nTXN00278,ACC-1010,EMP010,2024-02-13 12:13:28,725.44,BookMyShow,DEBIT,False,\nTXN00210,ACC-1007,EMP007,2024-02-04 15:20:02,1351.6,Swiggy,DEBIT,False,\nTXN00266,ACC-1010,EMP010,2024-01-08 18:41:48,4741.62,Zomato,DEBIT,False,\nTXN00175,ACC-1006,EMP006,2024-03-21 12:16:37,3512.23,DMart,DEBIT,False,\nTXN00242,ACC-1008,EMP008,2024-02-01 21:33:27,2011.41,Amazon,DEBIT,False,\nTXN00215,ACC-1007,EMP007,2024-03-01 13:05:44,4605.12,BookMyShow,DEBIT,False,\nTXN00219,ACC-1007,EMP007,2024-03-05 17:25:35,310.73,DMart,DEBIT,False,\nTXN00049,ACC-1002,EMP002,2024-01-19 08:13:37,2788.89,Zomato,DEBIT,False,\nTXN00017,ACC-1001,EMP001,2024-03-24 20:02:38,637.23,Zomato,DEBIT,False,\nTXN00256,ACC-1009,EMP009,2024-03-23 12:07:53,2089.36,MakeMyTrip,DEBIT,False,\nTXN00223,ACC-1008,EMP008,2024-02-07 15:53:35,1554.35,DMart,DEBIT,False,\nTXN00138,ACC-1005,EMP005,2024-03-12 10:20:10,1479.73,BookMyShow,DEBIT,False,\nTXN00214,ACC-1007,EMP007,2024-01-06 20:01:17,110.83,Amazon,DEBIT,False,\nTXN00015,ACC-1001,EMP001,2024-02-17 21:53:59,1943.27,Zomato,DEBIT,False,\nTXN00299,ACC-1007,EMP007,2024-02-28 09:15:00,175000.0,NEXACORP Technologies,CREDIT,True,Data advisory\nTXN00034,ACC-1002,EMP002,2024-01-24 18:33:42,2393.92,DMart,DEBIT,False,\nTXN00232,ACC-1008,EMP008,2024-03-15 09:20:17,710.89,Zomato,DEBIT,False,\nTXN00031,ACC-1002,EMP002,2024-03-21 17:30:09,2801.46,Amazon,DEBIT,False,\nTXN00054,ACC-1003,EMP003,2024-01-18 18:05:03,2467.17,Amazon,DEBIT,False,\nTXN00148,ACC-1005,EMP005,2024-02-26 15:38:56,4949.39,Swiggy,DEBIT,False,\nTXN00296,ACC-1010,EMP010,2024-01-10 15:39:31,4495.71,Swiggy,DEBIT,False,\nTXN00086,ACC-1004,EMP004,2024-02-09 14:13:34,3818.67,Swiggy,DEBIT,False,\nTXN00081,ACC-1003,EMP003,2024-03-03 11:11:38,2787.54,Zomato,DEBIT,False,\nTXN00204,ACC-1007,EMP007,2024-01-08 11:25:21,4626.91,Swiggy,DEBIT,False,\nTXN00002,ACC-1001,EMP001,2024-02-01 17:31:29,2999.28,Swiggy,DEBIT,False,\nTXN00097,ACC-1004,EMP004,2024-02-08 08:05:41,2008.68,Zomato,DEBIT,False,\nTXN00157,ACC-1005,EMP005,2024-01-18 21:28:43,3939.17,Amazon,DEBIT,False,\nTXN00218,ACC-1007,EMP007,2024-02-04 19:33:50,2879.1,Swiggy,DEBIT,False,\nTXN00118,ACC-1004,EMP004,2024-02-14 12:21:59,2303.9,DMart,DEBIT,False,\nTXN00172,ACC-1006,EMP006,2024-03-24 12:13:34,4378.4,BigBasket,DEBIT,False,\nTXN00286,ACC-1010,EMP010,2024-02-12 18:26:05,1228.08,Reliance Digital,DEBIT,False,\nTXN00009,ACC-1001,EMP001,2024-03-12 14:28:23,4044.23,Amazon,DEBIT,False,\nTXN00019,ACC-1001,EMP001,2024-01-03 21:41:55,2341.87,Zomato,DEBIT,False,\nTXN00151,ACC-1005,EMP005,2024-02-26 20:06:50,631.06,DMart,DEBIT,False,\nTXN00129,ACC-1005,EMP005,2024-03-09 10:37:02,1663.63,MakeMyTrip,DEBIT,False,\nTXN00159,ACC-1005,EMP005,2024-02-01 10:02:50,1644.38,DMart,DEBIT,False,\nTXN00142,ACC-1005,EMP005,2024-02-23 17:56:31,2247.07,BookMyShow,DEBIT,False,\nTXN00022,ACC-1001,EMP001,2024-01-05 19:19:57,2125.24,Amazon,DEBIT,False,\nTXN00006,ACC-1001,EMP001,2024-01-15 17:31:26,3598.74,MakeMyTrip,DEBIT,False,\nTXN00058,ACC-1003,EMP003,2024-02-17 08:50:46,3206.76,MakeMyTrip,DEBIT,False,\nTXN00254,ACC-1009,EMP009,2024-01-28 20:42:58,1411.16,MakeMyTrip,DEBIT,False,\nTXN00294,ACC-1010,EMP010,2024-02-07 08:16:51,1342.58,Swiggy,DEBIT,False,\nTXN00099,ACC-1004,EMP004,2024-02-08 12:29:21,4739.03,DMart,DEBIT,False,\nTXN00090,ACC-1004,EMP004,2024-01-02 12:05:09,1969.61,Swiggy,DEBIT,False,\nTXN00209,ACC-1007,EMP007,2024-01-16 18:48:00,195.31,Zomato,DEBIT,False,\nTXN00184,ACC-1006,EMP006,2024-03-19 17:06:01,2228.49,DMart,DEBIT,False,\nTXN00072,ACC-1003,EMP003,2024-02-04 08:39:06,418.02,BigBasket,DEBIT,False,\nTXN00227,ACC-1008,EMP008,2024-02-12 08:01:13,3303.65,BigBasket,DEBIT,False,\nTXN00068,ACC-1003,EMP003,2024-01-08 16:54:52,3529.08,Swiggy,DEBIT,False,\nTXN00128,ACC-1005,EMP005,2024-03-31 19:19:19,359.69,Swiggy,DEBIT,False,\nTXN00144,ACC-1005,EMP005,2024-02-07 08:27:27,1162.97,BigBasket,DEBIT,False,\nTXN00071,ACC-1003,EMP003,2024-01-30 10:57:35,4347.18,MakeMyTrip,DEBIT,False,\nTXN00156,ACC-1005,EMP005,2024-03-31 12:05:48,2885.04,Swiggy,DEBIT,False,\nTXN00140,ACC-1005,EMP005,2024-01-02 14:47:04,1015.89,Zomato,DEBIT,False,\nTXN00300,ACC-1007,EMP007,2024-03-10 16:45:00,300000.0,NEXACORP Technologies,CREDIT,True,Project milestone\nTXN00075,ACC-1003,EMP003,2024-01-10 12:11:23,2841.59,Zomato,DEBIT,False,\nTXN00212,ACC-1007,EMP007,2024-03-13 10:20:10,828.68,Swiggy,DEBIT,False,\nTXN00280,ACC-1010,EMP010,2024-01-23 17:54:02,2831.79,Reliance Digital,DEBIT,False,\nTXN00199,ACC-1007,EMP007,2024-03-05 12:00:38,3577.51,Zomato,DEBIT,False,\nTXN00040,ACC-1002,EMP002,2024-01-10 10:38:03,3820.4,DMart,DEBIT,False,\nTXN00285,ACC-1010,EMP010,2024-03-22 15:55:03,4686.6,BookMyShow,DEBIT,False,\nTXN00279,ACC-1010,EMP010,2024-02-25 19:05:08,4805.28,Reliance Digital,DEBIT,False,\nTXN00231,ACC-1008,EMP008,2024-03-30 20:32:17,2319.37,Swiggy,DEBIT,False,\nTXN00039,ACC-1002,EMP002,2024-01-07 11:45:30,3384.68,Amazon,DEBIT,False,\nTXN00117,ACC-1004,EMP004,2024-02-23 20:53:15,474.98,BookMyShow,DEBIT,False,\nTXN00098,ACC-1004,EMP004,2024-02-12 14:09:47,2181.55,BookMyShow,DEBIT,False,\nTXN00265,ACC-1009,EMP009,2024-01-21 09:24:06,3301.48,BigBasket,DEBIT,False,\nTXN00171,ACC-1006,EMP006,2024-01-01 21:53:08,2167.61,BookMyShow,DEBIT,False,\nTXN00023,ACC-1001,EMP001,2024-01-31 10:53:06,549.44,Amazon,DEBIT,False,\nTXN00155,ACC-1005,EMP005,2024-03-09 11:56:06,2716.9,Reliance Digital,DEBIT,False,\nTXN00160,ACC-1005,EMP005,2024-03-27 13:29:52,753.75,BigBasket,DEBIT,False,\nTXN00139,ACC-1005,EMP005,2024-02-10 19:47:16,3116.08,Reliance Digital,DEBIT,False,\nTXN00237,ACC-1008,EMP008,2024-03-15 09:31:32,573.01,MakeMyTrip,DEBIT,False,\nTXN00026,ACC-1001,EMP001,2024-03-10 11:02:30,4325.46,Amazon,DEBIT,False,\nTXN00014,ACC-1001,EMP001,2024-03-23 21:41:47,3247.11,Zomato,DEBIT,False,\nTXN00146,ACC-1005,EMP005,2024-03-11 15:09:04,2884.93,BigBasket,DEBIT,False,\nTXN00189,ACC-1006,EMP006,2024-02-01 15:44:51,3020.04,BigBasket,DEBIT,False,\nTXN00207,ACC-1007,EMP007,2024-01-21 14:56:59,1766.19,BigBasket,DEBIT,False,\nTXN00059,ACC-1003,EMP003,2024-03-25 14:49:47,82.73,Zomato,DEBIT,False,\nTXN00221,ACC-1007,EMP007,2024-02-29 20:07:28,3878.96,BigBasket,DEBIT,False,\nTXN00187,ACC-1006,EMP006,2024-03-16 18:13:12,1790.1,Zomato,DEBIT,False,\nTXN00065,ACC-1003,EMP003,2024-02-28 15:54:36,4951.65,DMart,DEBIT,False,\nTXN00238,ACC-1008,EMP008,2024-02-29 12:23:47,647.65,Reliance Digital,DEBIT,False,\nTXN00200,ACC-1007,EMP007,2024-02-24 17:49:31,458.02,BookMyShow,DEBIT,False,\nTXN00053,ACC-1003,EMP003,2024-02-28 10:21:18,3985.13,BookMyShow,DEBIT,False,\nTXN00100,ACC-1004,EMP004,2024-03-02 12:23:54,4824.64,Reliance Digital,DEBIT,False,\nTXN00035,ACC-1002,EMP002,2024-02-08 20:00:20,764.54,MakeMyTrip,DEBIT,False,\nTXN00079,ACC-1003,EMP003,2024-02-13 16:28:20,3088.63,Zomato,DEBIT,False,\nTXN00290,ACC-1010,EMP010,2024-01-07 13:24:11,3676.29,BookMyShow,DEBIT,False,\nTXN00121,ACC-1005,EMP005,2024-03-31 09:36:40,4253.44,Swiggy,DEBIT,False,\nTXN00185,ACC-1006,EMP006,2024-03-21 18:28:32,4603.48,MakeMyTrip,DEBIT,False,\nTXN00291,ACC-1010,EMP010,2024-02-22 14:54:11,1924.63,Zomato,DEBIT,False,\nTXN00168,ACC-1006,EMP006,2024-02-13 20:31:05,3823.16,Amazon,DEBIT,False,\nTXN00196,ACC-1007,EMP007,2024-03-10 17:33:40,3825.49,Swiggy,DEBIT,False,\nTXN00070,ACC-1003,EMP003,2024-03-13 21:40:57,4870.51,Amazon,DEBIT,False,\nTXN00188,ACC-1006,EMP006,2024-02-10 19:04:30,1276.54,Swiggy,DEBIT,False,\nTXN00174,ACC-1006,EMP006,2024-03-26 20:39:11,869.35,Zomato,DEBIT,False,\nTXN00029,ACC-1002,EMP002,2024-02-08 20:16:03,4929.19,DMart,DEBIT,False,\nTXN00136,ACC-1005,EMP005,2024-02-23 16:20:59,2895.29,Zomato,DEBIT,False,\nTXN00132,ACC-1005,EMP005,2024-02-14 12:55:40,2316.41,BookMyShow,DEBIT,False,\nTXN00270,ACC-1010,EMP010,2024-03-13 21:16:37,4191.65,MakeMyTrip,DEBIT,False,\nTXN00166,ACC-1006,EMP006,2024-01-28 14:55:33,1648.18,BigBasket,DEBIT,False,\nTXN00274,ACC-1010,EMP010,2024-02-13 18:02:13,4597.96,Reliance Digital,DEBIT,False,\nTXN00043,ACC-1002,EMP002,2024-03-02 20:48:07,3493.35,DMart,DEBIT,False,\nTXN00024,ACC-1001,EMP001,2024-02-27 16:22:08,3531.27,Amazon,DEBIT,False,\nTXN00092,ACC-1004,EMP004,2024-03-28 13:19:48,737.26,BigBasket,DEBIT,False,\nTXN00244,ACC-1008,EMP008,2024-01-04 21:19:45,4280.28,DMart,DEBIT,False,\nTXN00183,ACC-1006,EMP006,2024-03-23 21:54:04,757.12,Amazon,DEBIT,False,\nTXN00088,ACC-1004,EMP004,2024-01-14 08:22:03,1801.88,Swiggy,DEBIT,False,\nTXN00293,ACC-1010,EMP010,2024-01-21 14:19:04,4006.01,Amazon,DEBIT,False,\nTXN00101,ACC-1004,EMP004,2024-02-07 18:17:17,3182.87,DMart,DEBIT,False,\nTXN00276,ACC-1010,EMP010,2024-01-15 19:51:02,4310.31,Swiggy,DEBIT,False,\nTXN00095,ACC-1004,EMP004,2024-02-16 11:31:25,1270.62,MakeMyTrip,DEBIT,False,\nTXN00076,ACC-1003,EMP003,2024-03-27 20:33:04,1692.06,BookMyShow,DEBIT,False,\nTXN00032,ACC-1002,EMP002,2024-02-14 21:10:55,3373.15,Reliance Digital,DEBIT,False,\nTXN00191,ACC-1006,EMP006,2024-01-27 15:14:54,2572.14,Zomato,DEBIT,False,\nTXN00192,ACC-1006,EMP006,2024-02-07 17:02:46,3929.82,DMart,DEBIT,False,\nTXN00094,ACC-1004,EMP004,2024-02-05 13:53:43,2446.95,Swiggy,DEBIT,False,\nTXN00046,ACC-1002,EMP002,2024-02-03 13:02:06,4419.92,MakeMyTrip,DEBIT,False,\nTXN00263,ACC-1009,EMP009,2024-01-04 20:32:26,3903.76,Amazon,DEBIT,False,\nTXN00109,ACC-1004,EMP004,2024-03-15 13:36:40,2557.73,Zomato,DEBIT,False,\nTXN00106,ACC-1004,EMP004,2024-02-22 17:25:18,738.94,BigBasket,DEBIT,False,\nTXN00150,ACC-1005,EMP005,2024-02-27 11:40:45,4317.89,Swiggy,DEBIT,False,\nTXN00030,ACC-1002,EMP002,2024-02-22 12:12:25,351.74,BookMyShow,DEBIT,False,\nTXN00182,ACC-1006,EMP006,2024-02-18 18:49:42,3778.13,BookMyShow,DEBIT,False,\nTXN00110,ACC-1004,EMP004,2024-03-10 08:30:52,4843.72,Swiggy,DEBIT,False,\nTXN00164,ACC-1006,EMP006,2024-01-12 18:13:58,2319.32,Reliance Digital,DEBIT,False,\nTXN00123,ACC-1005,EMP005,2024-03-07 10:26:32,842.67,Zomato,DEBIT,False,\nTXN00028,ACC-1001,EMP001,2024-03-14 16:22:15,3379.03,Reliance Digital,DEBIT,False,\nTXN00105,ACC-1004,EMP004,2024-03-31 10:56:06,3998.54,Swiggy,DEBIT,False,\nTXN00061,ACC-1003,EMP003,2024-01-03 15:01:51,3504.4,Zomato,DEBIT,False,\nTXN00147,ACC-1005,EMP005,2024-03-10 19:31:33,1865.97,Amazon,DEBIT,False,\nTXN00084,ACC-1004,EMP004,2024-01-10 09:08:54,813.39,BookMyShow,DEBIT,False,\nTXN00281,ACC-1010,EMP010,2024-01-29 17:19:02,4081.55,Zomato,DEBIT,False,\nTXN00195,ACC-1006,EMP006,2024-02-10 09:50:51,4311.03,Zomato,DEBIT,False,\nTXN00126,ACC-1005,EMP005,2024-03-19 20:21:48,2275.4,Zomato,DEBIT,False,\nTXN00167,ACC-1006,EMP006,2024-02-13 15:39:44,696.44,MakeMyTrip,DEBIT,False,\nTXN00287,ACC-1010,EMP010,2024-01-22 16:54:23,4817.24,Reliance Digital,DEBIT,False,\nTXN00249,ACC-1009,EMP009,2024-01-03 21:57:36,1028.86,MakeMyTrip,DEBIT,False,\nTXN00243,ACC-1008,EMP008,2024-03-27 12:11:01,4109.44,BookMyShow,DEBIT,False,\nTXN00190,ACC-1006,EMP006,2024-03-29 08:22:31,4243.0,BigBasket,DEBIT,False,\nTXN00152,ACC-1005,EMP005,2024-01-27 19:20:59,2960.22,Reliance Digital,DEBIT,False,\nTXN00001,ACC-1001,EMP001,2024-03-30 15:41:21,2380.6,DMart,DEBIT,False,\nTXN00259,ACC-1009,EMP009,2024-03-21 21:55:01,2741.1,Amazon,DEBIT,False,\nTXN00247,ACC-1009,EMP009,2024-01-26 19:31:53,1892.59,Swiggy,DEBIT,False,\nTXN00260,ACC-1009,EMP009,2024-02-18 18:56:48,1827.6,MakeMyTrip,DEBIT,False,\nTXN00298,ACC-1007,EMP007,2024-02-10 14:22:00,250000.0,NEXACORP Technologies,CREDIT,True,Consulting fee\nTXN00297,ACC-1010,EMP010,2024-02-13 16:18:59,3087.54,MakeMyTrip,DEBIT,False,\nTXN00089,ACC-1004,EMP004,2024-03-17 16:22:21,1655.93,Zomato,DEBIT,False,\nTXN00228,ACC-1008,EMP008,2024-01-14 10:52:21,4916.42,Zomato,DEBIT,False,\nTXN00205,ACC-1007,EMP007,2024-02-28 16:34:19,322.39,BookMyShow,DEBIT,False,\nTXN00078,ACC-1003,EMP003,2024-01-07 09:22:03,1199.11,Swiggy,DEBIT,False,\nTXN00013,ACC-1001,EMP001,2024-03-01 08:26:39,2073.89,BookMyShow,DEBIT,False,\nTXN00162,ACC-1006,EMP006,2024-02-21 15:13:06,1427.22,Reliance Digital,DEBIT,False,\nTXN00124,ACC-1005,EMP005,2024-02-29 11:14:45,2054.98,BookMyShow,DEBIT,False,\nTXN00042,ACC-1002,EMP002,2024-01-02 10:57:55,990.62,Swiggy,DEBIT,False,\nTXN00114,ACC-1004,EMP004,2024-01-13 11:37:20,2577.85,DMart,DEBIT,False,\nTXN00096,ACC-1004,EMP004,2024-03-17 16:38:00,2316.42,BookMyShow,DEBIT,False,\nTXN00289,ACC-1010,EMP010,2024-02-14 11:35:35,584.77,Amazon,DEBIT,False,\nTXN00012,ACC-1001,EMP001,2024-03-10 21:55:03,4676.18,Swiggy,DEBIT,False,\nTXN00115,ACC-1004,EMP004,2024-02-27 13:14:15,2342.16,BookMyShow,DEBIT,False,\nTXN00258,ACC-1009,EMP009,2024-01-26 16:59:49,3996.13,DMart,DEBIT,False,\nTXN00220,ACC-1007,EMP007,2024-03-07 21:44:23,4772.69,Swiggy,DEBIT,False,\nTXN00253,ACC-1009,EMP009,2024-01-04 13:21:29,2161.99,Reliance Digital,DEBIT,False,\nTXN00283,ACC-1010,EMP010,2024-01-01 21:16:58,4746.06,Zomato,DEBIT,False,\nTXN00262,ACC-1009,EMP009,2024-02-04 10:31:02,1628.44,DMart,DEBIT,False,\nTXN00179,ACC-1006,EMP006,2024-01-16 21:50:03,2140.45,BookMyShow,DEBIT,False,\nTXN00020,ACC-1001,EMP001,2024-03-09 13:18:35,1186.84,MakeMyTrip,DEBIT,False,\nTXN00170,ACC-1006,EMP006,2024-01-16 21:00:43,832.02,MakeMyTrip,DEBIT,False,\nTXN00240,ACC-1008,EMP008,2024-01-12 10:12:23,3445.97,Amazon,DEBIT,False,\nTXN00161,ACC-1006,EMP006,2024-02-23 13:15:08,423.81,Swiggy,DEBIT,False,\nTXN00074,ACC-1003,EMP003,2024-01-03 21:27:38,2955.83,Zomato,DEBIT,False,\nTXN00018,ACC-1001,EMP001,2024-03-08 09:46:58,4894.69,Amazon,DEBIT,False,\nTXN00063,ACC-1003,EMP003,2024-01-31 10:41:13,2655.96,Reliance Digital,DEBIT,False,\nTXN00250,ACC-1009,EMP009,2024-01-17 09:17:15,4244.01,Reliance Digital,DEBIT,False,\nTXN00229,ACC-1008,EMP008,2024-03-03 21:27:23,4864.17,BookMyShow,DEBIT,False,\nTXN00239,ACC-1008,EMP008,2024-01-27 14:19:36,2343.57,Swiggy,DEBIT,False,\nTXN00230,ACC-1008,EMP008,2024-02-05 09:18:08,4610.31,Zomato,DEBIT,False,\nTXN00048,ACC-1002,EMP002,2024-01-27 13:11:23,2098.95,DMart,DEBIT,False,\nTXN00251,ACC-1009,EMP009,2024-01-16 08:35:51,2331.92,BookMyShow,DEBIT,False,\nTXN00080,ACC-1003,EMP003,2024-02-11 08:24:53,1402.97,MakeMyTrip,DEBIT,False,\nTXN00288,ACC-1010,EMP010,2024-02-27 08:09:34,1087.94,Swiggy,DEBIT,False,\nTXN00021,ACC-1001,EMP001,2024-02-14 10:10:18,982.98,Swiggy,DEBIT,False,\nTXN00141,ACC-1005,EMP005,2024-03-12 15:04:34,2500.1,MakeMyTrip,DEBIT,False,\nTXN00193,ACC-1006,EMP006,2024-03-04 13:24:08,1243.35,Swiggy,DEBIT,False,\nTXN00131,ACC-1005,EMP005,2024-03-17 13:26:27,1993.09,Swiggy,DEBIT,False,\nTXN00216,ACC-1007,EMP007,2024-01-05 15:44:24,4574.04,Zomato,DEBIT,False,\nTXN00245,ACC-1008,EMP008,2024-01-13 14:28:06,4029.29,BookMyShow,DEBIT,False,\nTXN00060,ACC-1003,EMP003,2024-01-02 08:14:02,3624.85,BigBasket,DEBIT,False,\nTXN00222,ACC-1008,EMP008,2024-01-12 15:44:35,89.45,DMart,DEBIT,False,\nTXN00177,ACC-1006,EMP006,2024-01-28 14:40:31,706.86,DMart,DEBIT,False,\nTXN00056,ACC-1003,EMP003,2024-01-01 13:46:24,4220.6,DMart,DEBIT,False,\nTXN00292,ACC-1010,EMP010,2024-01-13 19:36:11,3954.21,DMart,DEBIT,False,\nTXN00255,ACC-1009,EMP009,2024-01-20 08:29:06,3114.92,DMart,DEBIT,False,\nTXN00198,ACC-1007,EMP007,2024-01-06 20:54:57,4745.97,Zomato,DEBIT,False,\nTXN00069,ACC-1003,EMP003,2024-03-04 19:50:04,3242.29,Reliance Digital,DEBIT,False,\nTXN00211,ACC-1007,EMP007,2024-03-04 14:22:21,1832.61,MakeMyTrip,DEBIT,False,\nTXN00233,ACC-1008,EMP008,2024-01-10 16:17:11,358.3,BookMyShow,DEBIT,False,\nTXN00202,ACC-1007,EMP007,2024-01-20 15:30:34,1984.12,Swiggy,DEBIT,False,\nTXN00169,ACC-1006,EMP006,2024-01-13 16:45:59,4191.68,Amazon,DEBIT,False,\nTXN00186,ACC-1006,EMP006,2024-01-28 09:12:49,547.3,Swiggy,DEBIT,False,\nTXN00036,ACC-1002,EMP002,2024-01-08 15:52:24,4840.54,BookMyShow,DEBIT,False,\nTXN00130,ACC-1005,EMP005,2024-01-15 11:40:22,4320.05,Reliance Digital,DEBIT,False,\n", "communication_logs": "msg_id,sender_id,receiver_id,timestamp,message_body,encoding,channel,flagged_keywords\nMSG0017,EMP009,EMP004,2024-03-14 15:05:00,Will be there.,PLAIN,TEAMS,False\nMSG0075,EMP008,EMP009,2024-01-25 10:20:57,Sounds good.,PLAIN,SLACK,False\nMSG0031,EMP002,EMP010,2024-02-03 11:02:10,Have you seen the report?,PLAIN,TEAMS,False\nMSG0069,EMP008,EMP009,2024-02-24 17:03:33,Have you seen the report?,PLAIN,EMAIL,False\nMSG0009,EMP007,NEXACORP_EXT,2024-03-14 22:00:00,VGFyZ2V0IGNvbmZpcm1lZC4gQmFja3VwcyBkZWxldGVkLg==,BASE64,SLACK,False\nMSG0073,EMP008,EMP009,2024-01-14 13:20:08,Have you seen the report?,PLAIN,EMAIL,False\nMSG0062,EMP002,EMP010,2024-01-23 17:38:40,Will send EOD.,PLAIN,TEAMS,False\nMSG0051,EMP008,EMP009,2024-03-03 16:43:26,On it.,PLAIN,SLACK,False\nMSG0006,EMP006,EMP001,2024-03-11 14:10:00,Your case is under review. Do not do anything rash.,PLAIN,TEAMS,False\nMSG0070,EMP008,EMP009,2024-01-28 13:12:01,On it.,PLAIN,TEAMS,False\nMSG0014,EMP001,EMP002,2024-03-13 09:00:00,Can you review my model accuracy report?,PLAIN,EMAIL,False\nMSG0080,EMP008,EMP009,2024-03-05 11:42:06,Sounds good.,PLAIN,TEAMS,False\nMSG0044,EMP002,EMP010,2024-01-15 12:43:47,Sounds good.,PLAIN,TEAMS,False\nMSG0028,EMP002,EMP010,2024-03-01 13:24:06,On it.,PLAIN,EMAIL,False\nMSG0035,EMP002,EMP010,2024-03-09 15:11:01,Will send EOD.,PLAIN,TEAMS,False\nMSG0024,EMP002,EMP010,2024-01-20 09:29:25,Meeting at 3?,PLAIN,EMAIL,False\nMSG0068,EMP004,EMP006,2024-02-02 14:28:30,Have you seen the report?,PLAIN,TEAMS,False\nMSG0061,EMP001,EMP003,2024-01-04 11:10:38,Will send EOD.,PLAIN,TEAMS,False\nMSG0003,EMP003,EMP009,2024-03-12 09:30:00,Did Arjun review your PR? He rejected mine again without reason.,PLAIN,EMAIL,False\nMSG0054,EMP001,EMP003,2024-01-25 12:58:31,Will send EOD.,PLAIN,TEAMS,False\nMSG0067,EMP002,EMP010,2024-01-17 14:49:34,Thanks!,PLAIN,SLACK,False\nMSG0076,EMP002,EMP010,2024-02-10 15:07:36,On it.,PLAIN,SLACK,False\nMSG0039,EMP004,EMP006,2024-01-28 16:16:34,Sounds good.,PLAIN,SLACK,False\nMSG0008,NEXACORP_EXT,EMP007,2024-03-01 08:15:00,VHJhbnNmZXIgaW5pdGlhdGVkLiBEZWxpdmVyIG9uIDE1dGgu,BASE64,SLACK,False\nMSG0047,EMP002,EMP010,2024-01-05 10:32:59,Will send EOD.,PLAIN,SLACK,False\nMSG0071,EMP002,EMP010,2024-03-15 09:55:14,Thanks!,PLAIN,TEAMS,False\nMSG0078,EMP002,EMP010,2024-01-05 14:14:49,Thanks!,PLAIN,SLACK,False\nMSG0046,EMP008,EMP009,2024-02-22 11:22:38,On it.,PLAIN,EMAIL,False\nMSG0081,EMP004,EMP006,2024-02-07 09:52:42,Sounds good.,PLAIN,TEAMS,False\nMSG0010,NEXACORP_EXT,EMP007,2024-03-14 22:10:00,RmluYWwgcGF5bWVudCBzZW50Lg==,BASE64,SLACK,False\nMSG0050,EMP001,EMP003,2024-02-13 16:21:23,Have you seen the report?,PLAIN,EMAIL,False\nMSG0013,EMP007,EMP005,2024-03-13 10:18:00,This is not a threat. It is a promise.,PLAIN,SLACK,True\nMSG0053,EMP008,EMP009,2024-02-04 15:33:33,Thanks!,PLAIN,TEAMS,False\nMSG0077,EMP002,EMP010,2024-02-07 11:20:05,Will send EOD.,PLAIN,EMAIL,False\nMSG0064,EMP001,EMP003,2024-02-06 09:14:49,Meeting at 3?,PLAIN,SLACK,False\nMSG0027,EMP008,EMP009,2024-01-11 13:15:43,Meeting at 3?,PLAIN,EMAIL,False\nMSG0015,EMP002,EMP001,2024-03-13 09:20:00,\"Sure, sending feedback by noon.\",PLAIN,TEAMS,False\nMSG0023,EMP008,EMP009,2024-01-31 09:51:47,Will send EOD.,PLAIN,TEAMS,False\nMSG0022,EMP007,EMP002,2024-03-11 13:30:00,Will fix tonight. Has been a rough week.,PLAIN,EMAIL,False\nMSG0072,EMP008,EMP009,2024-03-12 14:49:33,Thanks!,PLAIN,EMAIL,False\nMSG0019,EMP003,EMP008,2024-03-14 17:15:00,Done. Pushed to staging.,PLAIN,TEAMS,False\nMSG0004,EMP009,EMP003,2024-03-12 09:35:00,Same. He has been very critical lately.,PLAIN,TEAMS,False\nMSG0065,EMP004,EMP006,2024-01-29 14:49:35,On it.,PLAIN,SLACK,False\nMSG0059,EMP002,EMP010,2024-01-07 17:15:44,On it.,PLAIN,SLACK,False\nMSG0026,EMP002,EMP010,2024-01-26 09:52:22,Sounds good.,PLAIN,SLACK,False\nMSG0056,EMP004,EMP006,2024-01-09 11:48:00,Thanks!,PLAIN,EMAIL,False\nMSG0049,EMP004,EMP006,2024-01-07 15:42:42,Have you seen the report?,PLAIN,EMAIL,False\nMSG0001,EMP003,EMP006,2024-03-10 11:00:00,I cannot handle this anymore. Arjun keeps piling up work.,PLAIN,TEAMS,False\nMSG0029,EMP001,EMP003,2024-03-10 12:29:15,Have you seen the report?,PLAIN,EMAIL,False\nMSG0042,EMP001,EMP003,2024-02-19 14:00:26,Thanks!,PLAIN,EMAIL,False\nMSG0030,EMP008,EMP009,2024-01-24 13:00:43,Have you seen the report?,PLAIN,EMAIL,False\nMSG0005,EMP001,EMP006,2024-03-11 14:00:00,I deserve the senior role. Arjun blocked my promotion again.,PLAIN,SLACK,False\nMSG0052,EMP004,EMP006,2024-01-18 11:42:15,On it.,PLAIN,EMAIL,False\nMSG0043,EMP008,EMP009,2024-03-07 13:07:24,Meeting at 3?,PLAIN,TEAMS,False\nMSG0066,EMP008,EMP009,2024-02-22 13:37:10,On it.,PLAIN,SLACK,False\nMSG0041,EMP004,EMP006,2024-03-17 11:19:15,On it.,PLAIN,SLACK,False\nMSG0034,EMP004,EMP006,2024-03-11 09:32:55,Will send EOD.,PLAIN,TEAMS,False\nMSG0057,EMP004,EMP006,2024-03-08 16:54:50,Meeting at 3?,PLAIN,SLACK,False\nMSG0082,EMP008,EMP009,2024-03-12 15:51:58,Sounds good.,PLAIN,TEAMS,False\nMSG0021,EMP002,EMP007,2024-03-11 13:00:00,\"Rohan, the pipeline you built is failing on null values.\",PLAIN,TEAMS,False\nMSG0007,EMP007,NEXACORP_EXT,2024-03-01 08:00:00,UGFja2FnZSBpcyByZWFkeS4gVHJhbnNmZXIgZmlyc3Qu,BASE64,EMAIL,False\nMSG0079,EMP008,EMP009,2024-01-29 15:10:36,On it.,PLAIN,EMAIL,False\nMSG0018,EMP008,EMP003,2024-03-14 17:00:00,Can you check the firewall rules update?,PLAIN,TEAMS,False\nMSG0063,EMP008,EMP009,2024-02-14 10:28:17,Have you seen the report?,PLAIN,TEAMS,False\nMSG0012,EMP005,EMP007,2024-03-13 10:15:00,\"Rohan, this is a formal decision. Please speak to HR. Do not threaten me.\",PLAIN,SLACK,True\nMSG0002,EMP006,EMP003,2024-03-10 11:05:00,Lets schedule a 1:1. Try to stay calm.,PLAIN,SLACK,False\nMSG0074,EMP008,EMP009,2024-02-05 11:21:01,On it.,PLAIN,TEAMS,False\nMSG0036,EMP004,EMP006,2024-03-01 11:41:22,Will send EOD.,PLAIN,TEAMS,False\nMSG0011,EMP007,EMP005,2024-03-13 10:00:00,You had no right to put that termination notice. You will regret this.,PLAIN,EMAIL,True\nMSG0016,EMP004,EMP009,2024-03-14 15:00:00,Sprint planning at 4pm today.,PLAIN,TEAMS,False\nMSG0048,EMP002,EMP010,2024-01-05 12:33:43,Have you seen the report?,PLAIN,TEAMS,False\nMSG0037,EMP001,EMP003,2024-03-05 14:08:27,Thanks!,PLAIN,TEAMS,False\nMSG0055,EMP002,EMP010,2024-03-07 16:48:16,Meeting at 3?,PLAIN,TEAMS,False\nMSG0060,EMP008,EMP009,2024-02-17 16:24:41,Thanks!,PLAIN,EMAIL,False\nMSG0033,EMP001,EMP003,2024-02-14 16:16:25,Will send EOD.,PLAIN,TEAMS,False\nMSG0020,EMP010,EMP006,2024-03-12 11:00:00,Payroll processed for this month.,PLAIN,EMAIL,False\nMSG0045,EMP001,EMP003,2024-01-14 14:03:50,Meeting at 3?,PLAIN,EMAIL,False\nMSG0040,EMP002,EMP010,2024-01-11 17:53:40,Will send EOD.,PLAIN,SLACK,False\nMSG0058,EMP004,EMP006,2024-01-26 16:31:58,Sounds good.,PLAIN,SLACK,False\nMSG0032,EMP001,EMP003,2024-01-20 15:46:12,On it.,PLAIN,SLACK,False\nMSG0025,EMP001,EMP003,2024-02-07 16:24:54,On it.,PLAIN,TEAMS,False\nMSG0038,EMP004,EMP006,2024-01-16 17:32:35,Will send EOD.,PLAIN,SLACK,False\n", "employee_database": "employee_id,name,role,department,access_level,join_date,performance_rating,active_pip,termination_scheduled,past_incidents,server_room_badge\nEMP001,Priya Sharma,Data Scientist,Analytics,4,2020-11-18,4.1,False,,0,True\nEMP002,Kavya Reddy,ML Engineer,AI Lab,3,2020-12-28,3.1,False,,1,False\nEMP003,Siddharth Iyer,DevOps,Infrastructure,5,2021-05-11,4.5,False,,1,True\nEMP004,Meera Nair,Product Manager,Product,2,2021-01-31,3.2,False,,1,False\nEMP005,Arjun Nair,CTO,Executive,5,2021-08-07,4.6,False,,1,True\nEMP006,Neha Gupta,HR Manager,HR,2,2019-04-20,4.7,False,,0,False\nEMP007,Rohan Mehta,Data Engineer,Data Ops,5,2021-08-25,2.1,True,2024-03-16,2,True\nEMP008,Vikram Das,Security Analyst,Security,4,2020-02-03,3.8,False,,1,True\nEMP009,Anjali Bose,Backend Dev,Engineering,3,2021-12-21,3.2,False,,0,False\nEMP010,Kiran Pillai,Finance Analyst,Finance,2,2019-11-05,2.8,False,,0,False\n"};
+const DS_META={"server_access_logs": {"var": "logs", "alias": "server_access_logs.csv", "rows": 323, "cols": [["log_id", "int", "Unique log entry ID"], ["employee_id", "str", "EMP001\u2013EMP010"], ["employee_name", "str", "Full name"], ["timestamp", "datetime", "YYYY-MM-DD HH:MM:SS"], ["ip_address", "str", "Network IP used"], ["server_node", "str", "NODE-A/B/C/BACKUP"], ["access_type", "str", "READ/WRITE/DELETE/EXECUTE"], ["status", "str", "SUCCESS or FAILED"], ["session_duration_min", "float", "Session length in minutes"], ["bytes_transferred", "int", "Data volume moved"]]}, "financial_transactions": {"var": "txn", "alias": "financial_transactions.csv", "rows": 302, "cols": [["txn_id", "str", "Unique transaction ID"], ["account_id", "str", "Bank account reference"], ["employee_id", "str", "EMP001\u2013EMP010"], ["timestamp", "datetime", "Transaction time"], ["amount", "float", "Amount in INR \u20b9"], ["merchant", "str", "Payee or payer name"], ["txn_type", "str", "DEBIT or CREDIT"], ["flagged", "bool", "True if suspicious"], ["notes", "str", "Transaction description"]]}, "communication_logs": {"var": "comms", "alias": "communication_logs.csv", "rows": 82, "cols": [["msg_id", "str", "Unique message ID"], ["sender_id", "str", "Sender employee ID"], ["receiver_id", "str", "Receiver employee ID"], ["timestamp", "datetime", "Message sent time"], ["message_body", "str", "Raw message text (may be Base64)"], ["encoding", "str", "PLAIN or BASE64"], ["channel", "str", "SLACK/EMAIL/TEAMS"], ["flagged_keywords", "bool", "True if suspicious words detected"]]}, "employee_database": {"var": "emp", "alias": "employee_database.csv", "rows": 10, "cols": [["employee_id", "str", "EMP001\u2013EMP010"], ["name", "str", "Full name"], ["role", "str", "Job title"], ["department", "str", "Department name"], ["access_level", "int", "1-5 system access tier"], ["join_date", "date", "Employment start date"], ["performance_rating", "float", "Score out of 5.0"], ["active_pip", "bool", "True = on Performance Improvement Plan"], ["termination_scheduled", "str", "Scheduled firing date or null"], ["past_incidents", "int", "Number of HR incidents"], ["server_room_badge", "bool", "Physical server room access"]]}};
+const DS_SAMPLES={"server_access_logs": ["log_id,employee_id,employee_name,timestamp,ip_address,server_node,access_type,status,session_duration_min,bytes_transferred", "174,EMP002,Kavya Reddy,2024-03-16 01:06:15,192.168.1.13,NODE-C,READ,FAILED,84.0,10216", "133,EMP008,Vikram Das,2024-03-15 16:59:13,10.0.1.130,NODE-BACKUP,WRITE,SUCCESS,48.0,12582", "198,EMP004,Meera Nair,2024-03-14 01:29:24,192.168.2.220,NODE-B,READ,SUCCESS,83.0,39234"], "financial_transactions": ["txn_id,account_id,employee_id,timestamp,amount,merchant,txn_type,flagged,notes", "TXN00011,ACC-1001,EMP001,2024-03-15 09:01:20,2147.3,Swiggy,DEBIT,False,", "TXN00122,ACC-1005,EMP005,2024-03-27 19:12:02,4653.12,DMart,DEBIT,False,", "TXN00045,ACC-1002,EMP002,2024-02-18 14:31:39,3261.17,BigBasket,DEBIT,False,"], "communication_logs": ["msg_id,sender_id,receiver_id,timestamp,message_body,encoding,channel,flagged_keywords", "MSG0017,EMP009,EMP004,2024-03-14 15:05:00,Will be there.,PLAIN,TEAMS,False", "MSG0075,EMP008,EMP009,2024-01-25 10:20:57,Sounds good.,PLAIN,SLACK,False", "MSG0031,EMP002,EMP010,2024-02-03 11:02:10,Have you seen the report?,PLAIN,TEAMS,False"], "employee_database": ["employee_id,name,role,department,access_level,join_date,performance_rating,active_pip,termination_scheduled,past_incidents,server_room_badge", "EMP001,Priya Sharma,Data Scientist,Analytics,4,2020-11-18,4.1,False,,0,True", "EMP002,Kavya Reddy,ML Engineer,AI Lab,3,2020-12-28,3.1,False,,1,False", "EMP003,Siddharth Iyer,DevOps,Infrastructure,5,2021-05-11,4.5,False,,1,True"]};
+
+// ═══════════════════════════════════════════
+// CHAPTERS
+// ═══════════════════════════════════════════
+const CHS=[
+{id:1,title:"The Body in Server Room A",difficulty:"easy",points:5,
+nar:`It is 2:47 AM on March 15, 2024. The security alarm at NexaData Pvt. Ltd. screams into the Bengaluru night. Officers arrive to find server room NODE-A catastrophically failed — and Dr. Arjun Nair, the CTO, lies dead on the floor.`,
+disp:`"Pull every server access log. All of it. We need to know the full scope of this system before we can find the killer."`,
+mis:`Load the <code>logs</code> DataFrame (pre-loaded from server_access_logs.csv).<br><br><b>How many total log entries exist in the dataset?</b>`,
+ans:"323",hint:"Use len() on the logs DataFrame.",clue:null,
+st:`323 entries confirmed. Three days of digital activity. Somewhere in those rows hides the killer's footprint.`,
+ev:["323 log entries","3 days of data","10 employees"],
+sus:{p:[],c:[]}},
+
+{id:2,title:"Midnight at the Server",difficulty:"easy",points:6,
+nar:`Dr. Nair was alive at midnight. Dead by 2:17 AM. A 2-hour window. "Whoever did this was IN the system between midnight and 3 AM."`,
+disp:`"Filter the logs. Give me every event between midnight and 3 AM on March 15th. How many events?"`,
+mis:`Filter <code>logs</code> for timestamps between <code>2024-03-15 00:00:00</code> and <code>2024-03-15 03:00:00</code>.<br><br><b>How many events occurred in that window?</b>`,
+ans:"17",hint:"Parse timestamps with pd.to_datetime() first, then filter with >= and <=.",clue:null,
+st:`Seventeen events in that window. Nine employees appear — but only one was doing something very different.`,
+ev:["17 murder-window events","9 employees active","00:00–03:00 window"],
+sus:{p:[],c:[]}},
+
+{id:3,title:"The Backup Was Deleted",difficulty:"easy",points:7,
+nar:`NODE-BACKUP was accessed right before the crash. A DELETE action at 1:58 AM. This was no accident. This was surgical.`,
+disp:`"From your midnight filter, find every event on NODE-BACKUP. Who did it — and what IP address did they use?"`,
+mis:`From the murder-window logs, filter rows where <code>server_node == 'NODE-BACKUP'</code>.<br><br><b>Which Employee ID accessed NODE-BACKUP?</b>`,
+ans:"EMP007",hint:"Filter night[night['server_node'] == 'NODE-BACKUP'] and check the employee_id column.",
+clue:`CLUE UNLOCKED: IP 203.45.67.89 is NOT an office IP. Office range: 192.168.x.x and 10.0.x.x. The killer connected from outside the building.`,
+st:`EMP007. Three actions on NODE-BACKUP: READ 01:55, DELETE 01:58, WRITE 02:03. All from external IP 203.45.67.89.`,
+ev:["EMP007 on NODE-BACKUP","DELETE at 01:58","IP 203.45.67.89 = EXTERNAL"],
+sus:{p:["EMP007"],c:[]}},
+
+{id:4,title:"Clearing the Innocent",difficulty:"easy",points:5,
+nar:`EMP001 had 4 consecutive FAILED logins on the evening of March 14th. EMP003 was active past midnight. A good detective eliminates the innocent first.`,
+disp:`"EMP001 had failed logins that evening. What node? Is it critical? Check EMP003 too — internal or external IP?"`,
+mis:`Filter <code>logs</code> for <code>employee_id == 'EMP001'</code> and <code>status == 'FAILED'</code>.<br><br><b>What server_node did EMP001 fail to access?</b>`,
+ans:"NODE-C",hint:"Filter where employee_id is EMP001 and status is FAILED. Check the server_node column.",clue:null,
+st:`EMP001 tried NODE-C — a routine data node, not the server room. Forgot her password. EMP003 used internal IP on NODE-A. Both cleared.`,
+ev:["EMP001: NODE-C only","EMP003: internal IP","Both: CLEARED"],
+sus:{p:["EMP007"],c:["EMP001","EMP003"]}},
+
+{id:5,title:"Follow the Money",difficulty:"medium",points:10,
+nar:`Day two. The financial crimes unit arrives. "One employee had unusual deposits. Large ones. From a company that should not have been paying them anything."`,
+disp:`"Load the transaction records. Find who received the most total CREDIT payments. Give me the rupee amount."`,
+mis:`Use the <code>txn</code> DataFrame. Filter <code>txn_type == 'CREDIT'</code>. Group by <code>employee_id</code>, sum amounts.<br><br><b>What is the total credited to the top earner? (numbers only)</b>`,
+ans:"1225000",hint:"txn[txn['txn_type']=='CREDIT'].groupby('employee_id')['amount'].sum().sort_values(ascending=False)",clue:null,
+st:`₹12,25,000. EMP007 received over twelve lakh rupees. The next highest? Under ₹30,000.`,
+ev:["EMP007: ₹12,25,000","Next highest: <₹30k","4 suspicious deposits"],
+sus:{p:["EMP007"],c:["EMP001","EMP003"]}},
+
+{id:6,title:"NEXACORP",difficulty:"medium",points:10,
+nar:`The name on the payment receipts stops the room cold: NEXACORP Technologies. NexaData's most dangerous competitor. Someone on the inside had been feeding them information. For money.`,
+disp:`"Filter for NEXACORP transactions. Find the exact last payment — and calculate how many hours before the murder it arrived."`,
+mis:`Filter <code>txn</code> where <code>merchant == 'NEXACORP Technologies'</code>. Murder time: <code>2024-03-15 02:17:00</code>.<br><br><b>How many hours before the murder did the final payment arrive? (2 decimal places)</b>`,
+ans:"2.78",hint:"Sort by timestamp, take .iloc[-1], subtract from murder Timestamp, divide .total_seconds() by 3600.",
+clue:`CLUE UNLOCKED: HR records confirm EMP007 was scheduled for TERMINATION on 2024-03-16 — the day AFTER the murder. He knew he was about to be fired.`,
+st:`₹5,00,000 landed at 11:30 PM on March 14th. Just 2h 47min before Dr. Nair was found dead. Note: "Final delivery."`,
+ev:["Last payment: 2024-03-14 23:30","₹5,00,000 — 'Final delivery'","2.78 hrs before murder"],
+sus:{p:["EMP007"],c:["EMP001","EMP003"]}},
+
+{id:7,title:"The Kiran Pillai Trap",difficulty:"medium",points:7,
+nar:`The defense drops a bombshell: "EMP010 also has a flagged transaction — ₹2,00,000! Why isn't she a suspect?"`,
+disp:`"Pull EMP010's flagged transaction. One column will clear her immediately. Find it."`,
+mis:`Filter <code>txn</code> for <code>employee_id == 'EMP010'</code> and <code>flagged == True</code>.<br><br><b>What is the txn_type? (DEBIT or CREDIT)</b>`,
+ans:"DEBIT",hint:"Check txn_type — she's paying money OUT (DEBIT to HDFC Bank), not receiving bribes.",clue:null,
+st:`DEBIT. She paid her home loan EMI. No NEXACORP payments. Access level 2, no badge. Case dismissed.`,
+ev:["EMP010: DEBIT to HDFC Bank","Access level 2, badge: False","0 murder window entries"],
+sus:{p:["EMP007"],c:["EMP001","EMP003","EMP010"]}},
+
+{id:8,title:"The Encrypted Messages",difficulty:"hard",points:12,
+nar:`"There are messages encoded in Base64. Between EMP007 and an external contact: NEXACORP_EXT. Someone was hiding their conversations."`,
+disp:`"Decode every Base64 message. I want to know exactly what they were planning."`,
+mis:`Load <code>comms</code>. Filter <code>encoding == 'BASE64'</code>. Decode with <code>base64.b64decode(x).decode('utf-8')</code>.<br><br><b>What does the message sent at 2024-03-14 22:00 say?</b>`,
+ans:"Target confirmed. Backups deleted.",hint:"Use .apply(lambda x: base64.b64decode(x).decode('utf-8')) on message_body after filtering encoding == 'BASE64'.",
+clue:`CLUE UNLOCKED: At 22:00 on March 14th Rohan sent "Target confirmed. Backups deleted." NEXACORP replied: "Final payment sent." This was pre-planned murder.`,
+st:`The decoded messages: "Package is ready." "Deliver on 15th." Then: "Target confirmed. Backups deleted." "Final payment sent."`,
+ev:["4 Base64 messages decoded","Pre-planned: 'Deliver on 15th'","'Target confirmed. Backups deleted.'"],
+sus:{p:["EMP007"],c:["EMP001","EMP002","EMP003","EMP004","EMP006","EMP008","EMP009","EMP010"]}},
+
+{id:9,title:"The Promise",difficulty:"hard",points:12,
+nar:`Two days before the murder, Rohan Mehta walked into Dr. Arjun Nair's office and said something that should have set off every alarm.`,
+disp:`"Pull all flagged messages sent by EMP007. Find the direct threat to the victim."`,
+mis:`Filter <code>comms</code> where <code>flagged_keywords == True</code> AND <code>sender_id == 'EMP007'</code>.<br><br><b>What is the exact text of Rohan's final message to EMP005?</b>`,
+ans:"This is not a threat. It is a promise.",hint:"Filter flagged_keywords==True and sender_id=='EMP007'. Sort by timestamp. The last message to EMP005.",clue:null,
+st:`"This is not a threat. It is a promise." March 13th. Forty-eight hours later, Dr. Nair was dead.`,
+ev:["EMP007 → EMP005, Mar 13","'This is not a threat. It is a promise.'","48 hrs before murder"],
+sus:{p:["EMP007"],c:["EMP001","EMP002","EMP003","EMP004","EMP006","EMP008","EMP009","EMP010"]}},
+
+{id:10,title:"The Full Timeline",difficulty:"hard",points:15,
+nar:`Everything is on the table. Now prove it — assemble the complete minute-by-minute timeline of Rohan Mehta's actions on the night of the murder.`,
+disp:`"Combine all three datasets. Show me EMP007's full timeline from 22:00 on March 14th to 02:17 on March 15th. How many events?"`,
+mis:`Combine events from <code>comms</code> (decoded), <code>txn</code>, and <code>logs</code> for EMP007 between <code>2024-03-14 22:00</code> and <code>2024-03-15 02:17</code>.<br><br><b>How many total timeline events?</b>`,
+ans:"9",hint:"2 comms + 1 finance + 5 server log events (01:55–02:14). Decode Base64 first before filtering comms.",clue:null,
+st:`Nine events. 22:00 message. 23:30 payment. 01:55 READ. 01:58 DELETE. 02:03 WRITE. 02:09 EXECUTE. 02:14 WRITE. 02:17 — Dr. Nair is gone.`,
+ev:["9 events reconstructed","3 datasets combined","Complete chain: motive → method"],
+sus:{p:["EMP007"],c:["EMP001","EMP002","EMP003","EMP004","EMP006","EMP008","EMP009","EMP010"]}},
+
+{id:11,title:"The Verdict",difficulty:"hard",points:10,
+nar:`There is only one person who matches every dataset. One convergence point across all four data sources.`,
+disp:`"Count how many server log entries EMP007 made using external IP 203.45.67.89. Does any other employee ever use that IP?"`,
+mis:`Filter <code>logs</code> where <code>employee_id == 'EMP007'</code> AND <code>ip_address == '203.45.67.89'</code>.<br><br><b>How many entries?</b>`,
+ans:"5",hint:"Filter both conditions with &. Use len() on the result.",clue:null,
+st:`Five entries. Only EMP007. No other employee ever used that IP. Case closed. Rohan Mehta. EMP007. Convicted by data.`,
+ev:["5 external IP entries","0 other employees","CASE CLOSED"],
+sus:{p:["EMP007"],c:["EMP001","EMP002","EMP003","EMP004","EMP006","EMP008","EMP009","EMP010"]}}
+];
+
+// ═══════════════════════════════════════════
+// TOUR STEPS
+// ═══════════════════════════════════════════
+const TOUR=[
+{title:"The Murder",content:`<p>It is 2:47 AM, March 15, 2024. <b>Dr. Arjun Nair</b>, CTO of NexaData Pvt. Ltd., has been found dead in Server Room A, Bengaluru.</p><p style="margin-top:.75rem">NODE-A has catastrophically failed. The backup system was deliberately deleted minutes before. This was no accident.</p><p style="margin-top:.75rem">You are the digital forensics investigator. <b>Ten suspects. Four datasets. Eleven chapters.</b> The data holds the truth — you just need to find it.</p>`},
+{title:"The Code Editor",content:`<p>The <b>center panel</b> is your Python workspace. Write any pandas code you want — no starter code is given.</p><ul><li>Press <code>Ctrl+Enter</code> (or <code>Cmd+Enter</code> on Mac) to run</li><li>All output appears in the <b>terminal below</b> the editor</li><li>The editor auto-saves your code per chapter</li><li>Use <b>CLEAR</b> to wipe the editor and start fresh</li></ul><p style="margin-top:.75rem">The editor panel and output terminal are <b>resizable</b> — drag the bar between them up or down.</p>`},
+{title:"The Datasets",content:`<p>All four datasets are <b>pre-loaded</b> into Python memory. Use these variable names:</p><div class="tour-ds-row"><span class="tour-var">logs</span><span class="tour-file">server_access_logs.csv</span><span class="tour-cols">323 rows</span></div><div class="tour-ds-row"><span class="tour-var">txn</span><span class="tour-file">financial_transactions.csv</span><span class="tour-cols">302 rows</span></div><div class="tour-ds-row"><span class="tour-var">comms</span><span class="tour-file">communication_logs.csv</span><span class="tour-cols">82 rows</span></div><div class="tour-ds-row"><span class="tour-var">emp</span><span class="tour-file">employee_database.csv</span><span class="tour-cols">10 rows</span></div><p style="margin-top:.75rem">Click <b>DATASET EXPLORER</b> in the right panel anytime to see every column name, data type, and sample rows.</p>`},
+{title:"Installing Packages",content:`<p>Need a package that isn't loaded yet? Two ways to install:</p><ul><li><b>Right panel</b> → "INSTALL PACKAGE" → type package name → click INSTALL</li><li><b>In the editor</b>, type <code>!pip install scipy</code> on any line and run your code</li></ul><p style="margin-top:.75rem">Pre-installed: <code>pandas</code>, <code>numpy</code>, <code>base64</code> (stdlib).</p><p style="margin-top:.75rem">Installable: <code>scipy</code>, <code>matplotlib</code>, <code>scikit-learn</code>, and most pure-Python packages from PyPI.</p><p style="margin-top:.75rem">⚠ Some packages with C extensions (like <code>lxml</code>) may not be available in the browser.</p>`},
+{title:"Submitting Answers",content:`<p>Each chapter has one specific question. After running your code and reading the output:</p><ul><li>Type your answer in the <b>answer box</b> (right panel, top)</li><li>Press <code>Enter</code> or click <b>SUBMIT ANSWER</b></li><li>Correct → the next chapter <b>unlocks automatically</b></li><li>Wrong → try again. Use <b>HINT</b> for a one-line nudge</li></ul><p style="margin-top:.75rem">Some chapters unlock a <b>red clue box</b> in the story panel when solved — read it carefully before moving on.</p>`},
+{title:"Resizing Panels",content:`<p>All three panels are fully resizable:</p><ul><li><b>Drag left/right</b> on the thin grey bars between the story panel, editor, and right panel</li><li><b>Drag up/down</b> on the bar between the editor and the terminal output</li><li>Panels have minimum and maximum widths so they can't collapse completely</li></ul><p style="margin-top:.75rem">Click the <b>? TOUR</b> button in the top-right anytime to replay this guide.</p><p style="margin-top:.75rem"><b>You're ready. Good luck, detective.</b></p>`},
+];
+
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+const S={cur:1,solved:new Set(),score:0,attempts:{},pyReady:false,tourStep:0,codeStore:{}};
+let pyodide=null,editor=null;
+
+// ═══════════════════════════════════════════
+// CODEMIRROR
+// ═══════════════════════════════════════════
+function initEditor(){
+  editor=CodeMirror.fromTextArea(document.getElementById('code-ed'),{
+    mode:'python',theme:'dracula',lineNumbers:true,
+    autoCloseBrackets:true,matchBrackets:true,
+    indentUnit:4,tabSize:4,indentWithTabs:false,
+    extraKeys:{"Tab":c=>c.execCommand("indentMore"),"Shift-Tab":c=>c.execCommand("indentLess"),
+               "Ctrl-Enter":()=>runCode(),"Cmd-Enter":()=>runCode()}
+  });
+  const blank=`import pandas as pd\nimport base64\n\n# Datasets pre-loaded:\n#   logs  → server_access_logs.csv  (323 rows)\n#   txn   → financial_transactions.csv (302 rows)\n#   comms → communication_logs.csv (82 rows)\n#   emp   → employee_database.csv (10 rows)\n\n# Write your investigation code below ↓\n\n`;
+  editor.setValue(blank);
+  editor.clearHistory();
+  editor.on('change',()=>{S.codeStore[S.cur]=editor.getValue();});
+}
+
+// ═══════════════════════════════════════════
+// PYODIDE
+// ═══════════════════════════════════════════
+async function initPyodide(){
+  const bar=id('ls-bar'),msg=id('ls-msg'),dot=id('py-dot'),txt=id('py-txt');
+  try{
+    msg.textContent='Fetching Pyodide runtime (~8MB first load)...';bar.style.width='15%';
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js';
+    document.head.appendChild(s);
+    await new Promise((res,rej)=>{s.onload=res;s.onerror=rej;});
+    msg.textContent='Starting Python interpreter...';bar.style.width='40%';
+    pyodide=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/'});
+    msg.textContent='Installing pandas & numpy...';bar.style.width='65%';
+    await pyodide.loadPackage(['pandas','numpy','micropip']);
+    msg.textContent='Loading all 4 datasets into Python memory...';bar.style.width='88%';
+    const setup=Object.entries(CSV_DATA).map(([n,v])=>
+      `import io as _io,pandas as _pd\n${n}=_pd.read_csv(_io.StringIO(${JSON.stringify(v)}))`
+    ).join('\n');
+    await pyodide.runPythonAsync(setup+`
+import pandas as pd,numpy as np,io,base64,micropip
+logs=server_access_logs.copy()
+txn=financial_transactions.copy()
+comms=communication_logs.copy()
+emp=employee_database.copy()
+`);
+    bar.style.width='100%';msg.textContent='✓ Ready!';
+    S.pyReady=true;dot.className='sdot ready';txt.textContent='PYTHON READY';
+    id('run-btn').disabled=false;
+    setTimeout(()=>{
+      id('ls').style.display='none';
+      addOut('// ✓ Python ready. pandas · numpy · base64 · micropip loaded.','s');
+      addOut(`// Datasets: logs(${countLines(CSV_DATA.server_access_logs)} rows) · txn(${countLines(CSV_DATA.financial_transactions)} rows) · comms(${countLines(CSV_DATA.communication_logs)} rows) · emp(${countLines(CSV_DATA.employee_database)} rows)`,'s');
+      addOut('// Ctrl+Enter or Cmd+Enter to run code.','s');
+      openTour();
+    },500);
+  }catch(e){
+    dot.className='sdot err';txt.textContent='ERROR';
+    msg.textContent='⚠ Python failed. Check your internet connection.';
+    setTimeout(()=>id('ls').style.display='none',3000);
+    console.error(e);
+  }
+}
+function countLines(csv){return(csv.match(/\n/g)||[]).length-1;}
+
+// ═══════════════════════════════════════════
+// RUN CODE (with !pip support)
+// ═══════════════════════════════════════════
+async function runCode(){
+  if(!S.pyReady){addOut('Python not ready yet.','e');return;}
+  const btn=id('run-btn');btn.disabled=true;btn.textContent='⟳ RUNNING';
+  const raw=editor.getValue();
+  const t0=Date.now();
+
+  // Handle !pip install lines
+  const pipLines=raw.split('\n').filter(l=>l.trim().startsWith('!pip install'));
+  if(pipLines.length){
+    for(const line of pipLines){
+      const pkg=line.trim().replace(/^!pip install\s+/,'').trim();
+      addOut(`// Installing ${pkg} via micropip...`,'s');
+      try{
+        await pyodide.runPythonAsync(`await micropip.install('${pkg}')`);
+        addOut(`// ✓ ${pkg} installed successfully.`,'s');
+      }catch(err){
+        addOut(`// ✗ Failed to install ${pkg}: ${err.message}`,'e');
+      }
+    }
+  }
+
+  // Strip !pip lines and run the rest
+  const code=raw.split('\n').filter(l=>!l.trim().startsWith('!')).join('\n');
+  addOut(`\n$ run  [${new Date().toLocaleTimeString()}]`,'s');
+  try{
+    await pyodide.runPythonAsync(`import sys,io as _sio\n_cap=_sio.StringIO()\nsys.stdout=_cap`);
+    await pyodide.runPythonAsync(code);
+    const out=await pyodide.runPythonAsync(`sys.stdout=sys.__stdout__\n_cap.getvalue()`);
+    const elapsed=((Date.now()-t0)/1000).toFixed(2);
+    id('out-run-info').textContent=`last run: ${elapsed}s`;
+    addOut(out.trim()||(out===''?'(no output — add a print() statement)':''),'n');
+  }catch(err){
+    await pyodide.runPythonAsync(`import sys;sys.stdout=sys.__stdout__`).catch(()=>{});
+    addOut(err.message,'e');
+  }
+  btn.disabled=false;btn.textContent='▶ RUN (Ctrl+↵)';
+}
+
+async function installPkg(){
+  const inp=id('pip-inp');
+  const pkg=inp.value.trim();
+  if(!pkg)return;
+  if(!S.pyReady){addOut('Python not ready yet.','e');return;}
+  inp.value='';
+  addOut(`// Installing ${pkg}...`,'s');
+  try{
+    await pyodide.runPythonAsync(`await micropip.install('${pkg}')`);
+    addOut(`// ✓ ${pkg} installed. You can now import it in your code.`,'k');
+  }catch(err){
+    addOut(`// ✗ Could not install ${pkg}: ${err.message}`,'e');
+  }
+}
+
+function addOut(t,type='n'){
+  const s=id('out-scroll'),p=document.createElement('pre');
+  p.className=type==='e'?'oe':type==='s'?'os':type==='k'?'ok':type==='pip'?'pip-note':'';
+  p.textContent=t;s.appendChild(p);s.scrollTop=s.scrollHeight;
+}
+function clearOut(){id('out-scroll').innerHTML='';}
+function clearEditor(){
+  if(editor){
+    editor.setValue(`import pandas as pd\nimport base64\n\n# datasets: logs, txn, comms, emp\n\n`);
+  }
+}
+
+// ═══════════════════════════════════════════
+// TABS + PROGRESS LIST
+// ═══════════════════════════════════════════
+function buildTabs(){
+  const el=id('ch-tabs');
+  CHS.forEach(ch=>{
+    const t=document.createElement('div');
+    t.className='ch-tab'+(ch.id===1?' active':' locked');
+    t.id='tab-'+ch.id;
+    const d=document.createElement('div');
+    d.className='tdot'+(ch.id===1?' active':' locked');
+    d.id='tdot-'+ch.id;
+    t.appendChild(d);
+    t.appendChild(document.createTextNode(' CH.'+ch.id+' '+ch.title));
+    t.onclick=()=>{if(!t.classList.contains('locked'))switchCh(ch.id);};
+    el.appendChild(t);
+  });
+}
+
+function buildCLI(){
+  const el=id('cli-list');
+  CHS.forEach(ch=>{
+    const item=document.createElement('div');
+    item.className='cli'+(ch.id===1?' active':' locked');
+    item.id='cli-'+ch.id;
+    item.onclick=()=>{if(!item.classList.contains('locked'))switchCh(ch.id);};
+    item.innerHTML=`<span class="cli-n">${ch.id}.</span><span class="cli-t">${ch.title}</span><span class="cli-b ${ch.difficulty}" id="clibadge-${ch.id}">${ch.difficulty}</span>`;
+    el.appendChild(item);
+  });
+}
+
+function switchCh(id_){
+  const ch=CHS.find(c=>c.id===id_);if(!ch)return;
+  S.cur=id_;
+  // save/restore code per chapter
+  if(S.codeStore[id_]){editor.setValue(S.codeStore[id_]);}
+  else{editor.setValue(`import pandas as pd\nimport base64\n\n# datasets: logs, txn, comms, emp\n\n`);}
+  document.querySelectorAll('.ch-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tdot').forEach(d=>d.classList.remove('active'));
+  const at=document.getElementById('tab-'+id_);if(at)at.classList.add('active');
+  const ad=document.getElementById('tdot-'+id_);if(ad){ad.classList.remove('locked');ad.classList.add('active');}
+  document.querySelectorAll('.cli').forEach(i=>i.classList.remove('active'));
+  const ac=document.getElementById('cli-'+id_);if(ac)ac.classList.add('active');
+  id('ans-ch').textContent=id_;
+  id('ed-fname').textContent='chapter_'+id_+'_investigation.py';
+  const fb=id('ans-fb');fb.className='ans-fb';
+  id('ans-inp').className='ans-inp';id('ans-inp').value='';
+  renderStory(ch);
+  // scroll tab into view
+  const tab=document.getElementById('tab-'+id_);
+  if(tab)tab.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+}
+
+function renderStory(ch){
+  const s=id('story-scroll');
+  let h=`<div class="ch-num">CHAPTER ${ch.id} · ${ch.difficulty.toUpperCase()} · ${ch.points} PTS</div>
+<div class="ch-ttl">${ch.title}</div>
+<div class="s-nar">${ch.nar}</div>
+<div class="dbox"><div class="dlbl">INSPECTOR</div><div class="dtxt">${ch.disp}</div></div>
+<div class="mbox"><div class="mlbl">YOUR MISSION</div><div class="mtxt">${ch.mis}</div></div>`;
+  if(ch.ev)h+=`<div class="evrow">${ch.ev.map(t=>`<span class="evtag">${t}</span>`).join('')}</div>`;
+  if(ch.clue)h+=`<div class="cluebox${S.solved.has(ch.id)?' show':''}" id="cluebox-${ch.id}"><div class="cluelbl">NEW CLUE UNLOCKED</div><div class="cluetxt">${ch.clue}</div></div>`;
+  if(S.solved.has(ch.id))h+=`<div class="solvedbox"><div class="solvedlbl">✓ CHAPTER SOLVED</div><div class="solvedtxt">${ch.st}</div></div>`;
+  s.innerHTML=h;s.scrollTop=0;
+}
+
+// ═══════════════════════════════════════════
+// ANSWER
+// ═══════════════════════════════════════════
+function submit(){
+  const ch=CHS.find(c=>c.id===S.cur);
+  const inp=id('ans-inp'),fb=id('ans-fb');
+  if(!ch||S.solved.has(ch.id))return;
+  S.attempts[ch.id]=(S.attempts[ch.id]||0)+1;
+  const raw=inp.value.trim().toLowerCase().replace(/[₹,\s]/g,'');
+  const exp=ch.ans.toLowerCase().replace(/[₹,\s]/g,'');
+  const ok=raw===exp||(raw.length>3&&exp.includes(raw))||(raw.length>3&&raw.includes(exp));
+  if(ok){
+    inp.className='ans-inp ok';fb.className='ans-fb ok show';
+    fb.textContent='✓ Correct! +'+ch.points+' pts';
+    S.solved.add(ch.id);S.score+=ch.points;
+    id('score-top').textContent=S.score;id('score-side').textContent=S.score;
+    id('prog-bar').style.width=(S.solved.size/CHS.length*100)+'%';
+    if(ch.clue){const cl=document.getElementById('cluebox-'+ch.id);if(cl)cl.className='cluebox show';}
+    ch.sus.p.forEach(x=>{const e=document.getElementById('sd-'+x);if(e)e.className='sus-dot prime';});
+    ch.sus.c.forEach(x=>{const e=document.getElementById('sd-'+x);if(e)e.className='sus-dot cleared';});
+    const tab=document.getElementById('tab-'+ch.id);if(tab)tab.classList.add('solved');
+    const td=document.getElementById('tdot-'+ch.id);if(td)td.className='tdot solved';
+    const cli=document.getElementById('cli-'+ch.id);if(cli)cli.classList.add('solved');
+    const badge=document.getElementById('clibadge-'+ch.id);if(badge){badge.className='cli-b done';badge.textContent='✓';}
+    renderStory(ch);
+    addOut('\n// ✓ Chapter '+ch.id+' solved! +'+ch.points+' pts — '+(CHS.length-S.solved.size)+' chapters remaining.','k');
+    setTimeout(()=>{
+      const nid=ch.id+1,nch=CHS.find(c=>c.id===nid);
+      if(nch){
+        const nt=document.getElementById('tab-'+nid);if(nt){nt.classList.remove('locked');nt.classList.add('just-unlocked');setTimeout(()=>nt.classList.remove('just-unlocked'),900);}
+        const nd=document.getElementById('tdot-'+nid);if(nd)nd.className='tdot';
+        const nc=document.getElementById('cli-'+nid);if(nc)nc.classList.remove('locked');
+        addOut('// → Chapter '+nid+' unlocked: '+nch.title,'k');
+      }
+      if(ch.id===CHS.length){
+        id('v-score').textContent=S.score;
+        setTimeout(()=>id('verdict-bg').className='verdict-bg show',700);
+      }
+    },900);
+  }else{
+    inp.className='ans-inp bad';fb.className='ans-fb bad show';
+    fb.textContent=S.attempts[ch.id]>=2?'✗ Not quite. Run your code and read the output carefully. Use HINT if stuck.':'✗ Incorrect. Check your output and try again.';
+    setTimeout(()=>inp.className='ans-inp',1500);
+  }
+}
+
+function hint(){
+  const ch=CHS.find(c=>c.id===S.cur);if(!ch)return;
+  const fb=id('ans-fb');fb.className='ans-fb hint show';
+  fb.textContent='Hint: '+ch.hint;
+}
+
+// ═══════════════════════════════════════════
+// DATASET EXPLORER
+// ═══════════════════════════════════════════
+function buildDSExplorer(){
+  const body=id('ds-body');
+  const dsOrder=['server_access_logs','financial_transactions','communication_logs','employee_database'];
+  const varNames={server_access_logs:'logs',financial_transactions:'txn',communication_logs:'comms',employee_database:'emp'};
+  dsOrder.forEach(name=>{
+    const m=DS_META[name];
+    const card=document.createElement('div');card.className='ds-card';
+    const hdrId='dshdr-'+name,colId='dscols-'+name,smpId='dssmpl-'+name;
+    let colsHtml=m.cols.map(([cn,ct,cd])=>`<div class="ds-col-row"><span class="dc-name">${cn}</span><span class="dc-type">${ct}</span><span class="dc-desc">${cd}</span></div>`).join('');
+    // sample rows
+    const sampleLines=DS_SAMPLES[name];
+    const sampleText=sampleLines.join('\n');
+    card.innerHTML=`
+      <div class="ds-card-hdr" onclick="toggleDSCard('${colId}')">
+        <span class="ds-var-badge">${varNames[name]}</span>
+        <span class="ds-file">${m.alias}</span>
+        <span class="ds-rows">${m.rows} rows</span>
+      </div>
+      <div class="ds-cols" id="${colId}">${colsHtml}
+        <button class="ds-sample-btn" onclick="toggleSample('${smpId}',this)">SHOW SAMPLE ROWS</button>
+        <div class="ds-sample" id="${smpId}">${sampleText}</div>
+      </div>`;
+    body.appendChild(card);
+  });
+}
+
+function toggleDS(){
+  const body=id('ds-body'),arrow=id('ds-arrow');
+  const open=body.classList.toggle('open');
+  arrow.classList.toggle('open',open);
+}
+function toggleDSCard(colId){
+  document.getElementById(colId).classList.toggle('open');
+}
+function toggleSample(smpId,btn){
+  const el=document.getElementById(smpId);
+  const show=el.classList.toggle('show');
+  btn.textContent=show?'HIDE SAMPLE ROWS':'SHOW SAMPLE ROWS';
+}
+
+// ═══════════════════════════════════════════
+// TOUR
+// ═══════════════════════════════════════════
+function openTour(){S.tourStep=0;renderTour();id('tour-bg').className='tour-bg show';}
+function closeTour(){id('tour-bg').className='tour-bg';}
+function tourNav(dir){
+  S.tourStep=Math.max(0,Math.min(TOUR.length-1,S.tourStep+dir));
+  if(dir>0&&S.tourStep===TOUR.length-1){renderTour();return;}
+  if(S.tourStep===TOUR.length-1&&dir>0){closeTour();return;}
+  renderTour();
+}
+
+function renderTour(){
+  const step=S.tourStep,t=TOUR[step],total=TOUR.length;
+  id('tour-step-lbl').textContent=`STEP ${step+1} OF ${total}`;
+  id('tour-title').textContent=t.title;
+  id('tour-content').innerHTML=t.content;
+  id('tour-fill').style.width=((step+1)/total*100)+'%';
+  id('btn-prev').style.visibility=step===0?'hidden':'visible';
+  id('btn-next').textContent=step===total-1?"LET'S GO ▶":"NEXT →";
+  id('btn-next').onclick=step===total-1?closeTour:()=>tourNav(1);
+  // dots
+  const dots=id('tour-dots');dots.innerHTML='';
+  for(let i=0;i<total;i++){
+    const d=document.createElement('div');
+    d.className='tour-dot'+(i===step?' active':i<step?' done':'');
+    d.onclick=()=>{S.tourStep=i;renderTour();};
+    dots.appendChild(d);
+  }
+}
+
+// ═══════════════════════════════════════════
+// RESIZABLE PANELS
+// ═══════════════════════════════════════════
+function initResize(){
+  // Vertical drags (between panels)
+  document.querySelectorAll('.vdrag').forEach(handle=>{
+    handle.addEventListener('mousedown',e=>{
+      e.preventDefault();
+      const ws=id('workspace');
+      const leftId=handle.dataset.left,rightId=handle.dataset.right;
+      const leftEl=document.getElementById(leftId);
+      const rightEl=document.getElementById(rightId);
+      handle.classList.add('dragging');
+      const startX=e.clientX,startLeft=leftEl.offsetWidth,startRight=rightEl.offsetWidth;
+      const onMove=ev=>{
+        const dx=ev.clientX-startX;
+        const nl=Math.max(180,Math.min(window.innerWidth*0.45,startLeft+dx));
+        leftEl.style.width=nl+'px';
+        leftEl.style.flex='none';
+      };
+      const onUp=()=>{
+        handle.classList.remove('dragging');
+        document.removeEventListener('mousemove',onMove);
+        document.removeEventListener('mouseup',onUp);
+        if(editor)editor.refresh();
+      };
+      document.addEventListener('mousemove',onMove);
+      document.addEventListener('mouseup',onUp);
+    });
+  });
+
+  // Horizontal drag (editor vs output)
+  const hd=id('hd1');
+  hd.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    hd.classList.add('dragging');
+    const wrap=id('panel-editor-wrap');
+    const outPanel=id('out-panel');
+    const startY=e.clientY,startOut=outPanel.offsetHeight;
+    const onMove=ev=>{
+      const dy=ev.clientY-startY;
+      const newH=Math.max(60,Math.min(wrap.offsetHeight-80,startOut-dy));
+      outPanel.style.height=newH+'px';
+      if(editor)editor.refresh();
+    };
+    const onUp=()=>{
+      hd.classList.remove('dragging');
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+    };
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  });
+}
+
+// ═══════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════
+function id(x){return document.getElementById(x);}
+
+// ═══════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════
+buildTabs();buildCLI();initEditor();buildDSExplorer();renderStory(CHS[0]);initResize();
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')runCode();});
+initPyodide();
+</script>
+</body>
+</html>
